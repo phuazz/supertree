@@ -2,7 +2,7 @@
 
 Personal family portfolio tracker and plain-language investing teacher. Layered dashboard: a simple front page ("Phua JR") answering *is my money growing and why*, and depth tabs with total-return, drawdown and trend context. The visual system is a supertree that grows with the portfolio — the frame is money put in, the living growth is what market and dividends added.
 
-**Status:** Session 2 — front page live in template: headline answer, money-journey chart (Plotly, house layout), supertree SVG with growth-proportional canopy and unlit badge bulbs, weather reframe (sunny/cloudy/stormy off live drawdown, bands −2%/−7%), dividends card, four learn cards, under-the-bonnet check. Depth tabs (Session 3) and forward view + badge lights + Pages enablement (Session 4) remain.
+**Status:** Session 4 — full build. Two-tab layout. **My money** (age-11 front page): headline answer, money-journey chart, supertree SVG whose badge bulbs now light from milestones (first dividend stays *pending* until its ledger row is confirmed), weather reframe off live drawdown, dividends card, learn cards, under-the-bonnet check. **Look closer**: total-return % with a custom period selector (rebased to 0% per window), drawdown with the max-DD episode marked, 200-trading-day trend of raw close, worst-period tiles (engine risk stats verbatim), a multi-position-ready holdings table, the since-2008 context chart, and a forward view — a low/mid/high projection band with a monthly what-if simulator. Projection bands are ZH-signed-off (nominal SGD total return: low 4.0%, mid 5.1% = STI since 2008, high 8.0%) over a round 10-year horizon with no age on the page. Pages serves `main` `/docs`.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ supertree/
 │   ├── transactions.json  # SOURCE OF TRUTH — hand-maintained ledger
 │   ├── prices.json        # daily OHLC + adjclose, written by scripts/fetch.py
 │   ├── dividends.json     # ex-date + DPS, written by scripts/fetch.py
-│   ├── portfolio.json     # engine output — position, decomposition, risk stats
+│   ├── portfolio.json     # engine output — position, decomposition, risk, trend, projection
 │   ├── education.json     # engine output — long-history context, drawdown episodes
 │   └── status.json        # refresh status + guard verdict, always written
 ├── scripts/
@@ -52,4 +52,4 @@ No unattended refresh without a guard. `fetch.py` replaces `prices.json` only if
 - Prices and dividends: Yahoo Finance via `yfinance` (ES3.SI — SPDR Straits Times Index ETF, SGD). Ticker verified against the issuer product page at build time.
 - Valuation uses raw close only. Adjusted close is used solely for long-history context charts and is labelled as such — never in the valuation path, so dividends are not double-counted.
 
-*Last updated: 2026-07-18.*
+*Last updated: 2026-07-18. Unlisted: `noindex` on the page, never added to the phuazz.github.io hub.*
