@@ -387,7 +387,7 @@ const CHART_LAYOUT = {
   paper_bgcolor: 'transparent',
   plot_bgcolor: '#fafaf8',
   font: { family: 'DM Sans', size: 11, color: '#5c5c56' },
-  margin: { t: 10, b: 34, l: 10, r: 70 },
+  margin: { t: 10, b: 34, l: 10, r: 92 },  // room for the NOW pill in the right gutter
   xaxis: { gridcolor: '#eeeee8', linecolor: '#d5d3ca', linewidth: 1, showgrid: false,
            tickformat: "%b '%y", dtick: 'M2', tickfont: { size: 11 } },
   yaxis: { gridcolor: '#f0f0ea', linecolor: '#d5d3ca', linewidth: 1, showgrid: true, gridwidth: 1,
@@ -899,11 +899,10 @@ function drawForward(p){
     { x: dates, y: moneyIn, mode: 'lines', name: 'Money you put in',
       line: { color: '#c0beb5', width: 1.3, dash: 'dot' }, hovertemplate: 'Money in: S$%{y:,.0f}<extra></extra>' }
   ];
-  const layout = houseLayout({ yaxis: ySgd(',.0f'),
-    annotations: [{ xref: 'paper', x: 1, yref: 'y', y: end.mid, xanchor: 'left', xshift: 6,
-      text: 'S$' + groupMoney(end.mid), showarrow: false,
-      font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' }, bgcolor: '#1a8754', borderpad: 3 }] });
-  Plotly.react('c-forward', traces, layout, { displayModeBar: false, responsive: true });
+  // no on-chart end pill: the Low/Middle/High end values are shown big above,
+  // and a floating pill clips once contributions make the number long.
+  Plotly.react('c-forward', traces, houseLayout({ yaxis: ySgd(',.0f') }),
+    { displayModeBar: false, responsive: true });
   const note = document.getElementById('sim-note');
   if (C > 0){
     note.innerHTML = 'If you add <b>S$' + groupMoney(C) + '</b> every month and it grows in the middle way, in ' +
