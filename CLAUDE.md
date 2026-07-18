@@ -5,7 +5,7 @@ Layers on top of the vault `C:\dev\CLAUDE.md`. Where they conflict, this file wi
 ## Identity and hosting — binding
 
 - Public repo, **unlisted**: the page carries `<meta name="robots" content="noindex">` and this project is **never added to the phuazz.github.io hub** (no `DASH[]` entry, no count bump).
-- The page name is **"Phua JR"** — surname only. No first name, no age, no school, no account or broker identifiers anywhere in this repo, ever. The repo description stays generic ("personal family portfolio tracker").
+- The page name is **generic** — the page title and masthead read **"My money"**, carrying no personal identifier. No name at all (first or surname), no age, no school, no account or broker identifiers anywhere in this repo, ever — this includes the `<title>`, which leaks into browser tabs, history and screenshots. The repo description stays generic ("personal family portfolio tracker").
 - Full project context (whose portfolio, the kickoff interview) lives only in `KICKOFF_supertree.md` in private vault-docs — do not restate it here or in README.
 
 ## Engine rules — binding
