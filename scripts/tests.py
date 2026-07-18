@@ -250,6 +250,50 @@ def test_education_episodes():
     check("education: 15% fall is not an episode", edu2["episodes"] == [])
 
 
+def test_trend_sma():
+    # Hand-computed 4-trading-day SMA on a known raw-close series.
+    # closes 1..6; SMA[3]=(1+2+3+4)/4=2.5, SMA[4]=3.5, SMA[5]=4.5; [0..2]=None
+    pairs = [("2026-01-02", 1.0), ("2026-01-05", 2.0), ("2026-01-06", 3.0),
+             ("2026-01-07", 4.0), ("2026-01-08", 5.0), ("2026-01-09", 6.0)]
+    rows = mkrows(pairs)
+    tr = engine._trend(rows, window_months=600, sma_window=4)  # huge window: keep all
+    check("trend: sma warms up as None then fills",
+          tr["sma"] == [None, None, None, 2.5, 3.5, 4.5], f'got {tr["sma"]}')
+    check("trend: raw close carried verbatim",
+          tr["close"] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    check("trend: current above sma", tr["above"] is True)
+    check("trend: sma_now hand-value", tr["sma_now"] == 4.5)
+    check("trend: distance = close/sma - 1",
+          abs(tr["distance_pct"] - (6.0 / 4.5 - 1.0)) < 5e-7, f'got {tr["distance_pct"]}')
+
+    # below-SMA case: a falling tail must flip the state
+    pairs2 = [("2026-01-02", 6.0), ("2026-01-05", 5.0), ("2026-01-06", 4.0),
+              ("2026-01-07", 3.0), ("2026-01-08", 2.0), ("2026-01-09", 1.0)]
+    tr2 = engine._trend(mkrows(pairs2), window_months=600, sma_window=4)
+    check("trend: current below sma", tr2["above"] is False and tr2["distance_pct"] < 0)
+
+
+def test_trend_ignores_adjclose():
+    # SMA must be RAW close only — absurd adjclose must not move it.
+    pairs = [("2026-01-02", 2.0), ("2026-01-05", 2.0), ("2026-01-06", 2.0),
+             ("2026-01-07", 2.0), ("2026-01-08", 2.0)]
+    rows = mkrows(pairs, adj=[999.0, 999.0, 999.0, 999.0, 999.0])
+    tr = engine._trend(rows, window_months=600, sma_window=4)
+    check("trend: sma ignores adjclose (raw only)",
+          tr["sma"][-1] == 2.0 and tr["close_now"] == 2.0, f'got {tr["sma"][-1]}')
+
+
+def test_trend_window_slice():
+    # 15-month window must drop rows older than the cutoff and keep the tail.
+    pairs = [("2024-01-02", 3.0), ("2025-01-02", 3.5), ("2026-01-02", 4.0),
+             ("2026-06-01", 4.5), ("2026-07-17", 5.0)]
+    tr = engine._trend(mkrows(pairs), window_months=15, sma_window=2)
+    # cutoff = 15 months before 2026-07-17 -> 2025-04-17; keeps the last three
+    check("trend: window drops pre-cutoff rows",
+          tr["dates"] == ["2026-01-02", "2026-06-01", "2026-07-17"],
+          f'got {tr["dates"]}')
+
+
 # ------------------------------------------------------------ real data ----
 def test_real_data_smoke():
     import json
@@ -272,6 +316,13 @@ def test_real_data_smoke():
     check("real: provisional propagates (all rows drafted)", p["provisional"] is True)
     check("real: education history starts 2008 (Yahoo depth)",
           edu["history_start"].startswith("2008"))
+    tr = p["trend"]
+    check("real: trend close_now == position last_close (raw close)",
+          tr["close_now"] == p["position"]["last_close"])
+    check("real: trend sma is 200-trading-day and defined (deep history)",
+          tr["sma_window"] == 200 and tr["sma_now"] is not None)
+    check("real: trend above/below matches close vs sma",
+          tr["above"] == (tr["close_now"] >= tr["sma_now"]))
 
 
 def main():

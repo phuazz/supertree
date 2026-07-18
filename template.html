@@ -117,9 +117,43 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .check { font-family:var(--mono); font-size:12px; color:var(--t2); display:grid; grid-template-columns:220px 1fr; row-gap:5px; }
 .check b { color:var(--t1); font-weight:600; }
 .note { font-size:13px; color:var(--t2); margin-top:14px; }
+/* ---- look-closer tab shell ---- */
+.tabs { display:flex; gap:2px; margin-top:20px; border-bottom:1px solid var(--bd); }
+.tab { min-height:44px; padding:0 20px; background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; font-family:var(--sans); font-size:15px; font-weight:600; letter-spacing:0.2px; color:var(--t3-text); cursor:pointer; }
+.tab:hover { color:var(--t2); }
+.tab.active { color:var(--t1); border-bottom-color:var(--t1); }
+.tab:focus-visible { outline:2px solid var(--b); outline-offset:2px; border-radius:4px 4px 0 0; }
+.tabpanel[hidden] { display:none; }
+/* joined period selector — custom pills, NEVER Plotly's rangeselector */
+.chart-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+.chart-head .card-title, .chart-head .card-sub { margin-bottom:0; }
+.chart-head .card-sub { margin-top:4px; }
+.seg { display:inline-flex; flex:0 0 auto; border:1px solid var(--bd2); border-radius:999px; overflow:hidden; background:var(--bg3); }
+.seg button { min-height:40px; padding:0 15px; border:none; border-right:1px solid var(--bd); background:none; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:0.5px; color:var(--t2); cursor:pointer; }
+.seg button:last-child { border-right:none; }
+.seg button:hover { background:var(--bg-hover); }
+.seg button.active { background:var(--bg2); color:var(--t1); box-shadow:inset 0 -2px 0 var(--t1); }
+/* above/below-average pill */
+.abpill { font-family:var(--mono); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; padding:6px 12px; border-radius:999px; border:1px solid var(--bd2); white-space:nowrap; }
+.abpill.above { background:var(--g-bg); border-color:rgba(26,135,84,0.2); color:var(--g-text); }
+.abpill.below { background:var(--r-bg); border-color:rgba(192,57,43,0.2); color:var(--r-text); }
+/* worst-period stat tiles (reuse .kpi visuals) */
+.tiles { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--bd); border:1px solid var(--bd); border-radius:var(--radius-lg); overflow:hidden; }
+.tiles .kpi { background:var(--bg2); }
+.tiles .kpi-val { font-size:20px; }  /* 20px bold is large text — base --g/--r allowed */
+/* holdings table */
+.htable { width:100%; border-collapse:collapse; font-size:13px; }
+.htable th { text-align:right; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--t3-text); padding:9px 10px; border-bottom:1px solid var(--bd2); background:var(--bg3); }
+.htable th:first-child, .htable td:first-child { text-align:left; }
+.htable td { text-align:right; padding:11px 10px; border-bottom:1px solid var(--bd); font-family:var(--mono); color:var(--t2); }
+.htable td.name { font-family:var(--sans); font-weight:600; color:var(--t1); }
+.htable tr:last-child td { border-bottom:none; }
+/* 13px cells are small text -> -text variants per contrast rule */
+.htable td.pos { color:var(--g-text); } .htable td.neg { color:var(--r-text); }
+.tbl-note { font-size:12.5px; color:var(--t3-text); margin-top:12px; }
 @media (max-width:1200px){ .kpi-strip { grid-template-columns:repeat(3,1fr); } }
-@media (max-width:900px){ .duo, .learn-grid { grid-template-columns:1fr; } .tree-row { flex-direction:column; } .tree-row svg { width:60%; max-width:230px; } }
-@media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } .headline .big { font-size:34px; } }
+@media (max-width:900px){ .duo, .learn-grid { grid-template-columns:1fr; } .tree-row { flex-direction:column; } .tree-row svg { width:60%; max-width:230px; } .tiles { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } .headline .big { font-size:34px; } .htable { font-size:12px; } .htable th, .htable td { padding:8px 6px; } }
 </style>
 </head>
 <body>
@@ -130,6 +164,12 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
   </div>
   <div class="banner" id="prov-banner" hidden>Some of these numbers are provisional — the first trade record is a placeholder until the real date and cost are entered.</div>
 
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab active" role="tab" data-tab="money" aria-selected="true">My money</button>
+    <button class="tab" role="tab" data-tab="closer" aria-selected="false">Look closer</button>
+  </nav>
+
+  <div class="tabpanel" id="panel-money" role="tabpanel">
   <div class="card headline" id="headline"></div>
 
   <div class="kpi-strip" id="kpis"></div>
@@ -161,6 +201,55 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
     <div class="check" id="check"></div>
     <p class="note">Everything above is calculated from these numbers. They are refreshed on weekday evenings, tested and guarded before anything is shown to you.</p>
   </div>
+  </div><!-- /panel-money -->
+
+  <div class="tabpanel" id="panel-closer" role="tabpanel" hidden>
+    <div class="card">
+      <div class="chart-head">
+        <div>
+          <div class="card-title">Total return over time</div>
+          <div class="card-sub">Growth of everything you own — ETF value plus dividend cash — rebased to 0% at the start of the window you pick.</div>
+        </div>
+        <div class="seg" id="tr-seg" role="group" aria-label="Return period"></div>
+      </div>
+      <div id="c-return" style="height:320px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Drawdown — how far below the peak</div>
+      <div class="card-sub">Every dip measured from the highest point your money ever reached. The deepest one is marked.</div>
+      <div id="c-dd" style="height:280px"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-head">
+        <div>
+          <div class="card-title">200-day trend</div>
+          <div class="card-sub">The ETF’s raw closing price against its 200-trading-day average — the slow line strips out the daily wiggle.</div>
+        </div>
+        <span class="abpill" id="trend-pill"></span>
+      </div>
+      <div id="c-trend" style="height:300px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Worst stretches on record</div>
+      <div class="card-sub">The sharpest falls this money has lived through — taken straight from the engine’s risk figures, not recomputed here.</div>
+      <div class="tiles" id="cl-tiles"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">What you hold</div>
+      <div class="card-sub">One line per position. This table is built to hold more if new positions are ever added.</div>
+      <div id="cl-holdings"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">The long view — since 2008</div>
+      <div class="card-sub">Adjusted for dividends, since 2008. The three deepest falls are marked with how far they dropped and when they climbed back.</div>
+      <div id="c-history" style="height:340px"></div>
+    </div>
+  </div><!-- /panel-closer -->
 </div>
 <script>
 window.__DATA__ = null;
@@ -457,7 +546,222 @@ function renderCheck(p, edu, s){
     rows.map(x => '<span>' + x[0] + '</span><b>' + x[1] + '</b>').join('');
 }
 
+/* ----------------------------- LOOK CLOSER ----------------------------- */
+/* House chart layout, rebuilt fresh each call so per-chart yaxis overrides
+   never leak between charts. Same tokens/hover as the front-page CHART_LAYOUT. */
+function houseLayout(over){
+  const L = {
+    paper_bgcolor: 'transparent', plot_bgcolor: '#fafaf8',
+    font: { family: 'DM Sans', size: 11, color: '#5c5c56' },
+    margin: { t: 10, b: 34, l: 10, r: 62 },
+    xaxis: { gridcolor: '#eeeee8', linecolor: '#d5d3ca', linewidth: 1, showgrid: false,
+             tickformat: "%b '%y", tickfont: { size: 11 } },
+    yaxis: ySgd('.2f'),
+    showlegend: true,
+    legend: { x: 0, y: 1.06, orientation: 'h', font: { size: 11 }, bgcolor: 'transparent' },
+    hovermode: 'x unified',
+    hoverlabel: { bgcolor: '#fff', bordercolor: '#d5d3ca', font: { size: 11, family: 'DM Sans' } }
+  };
+  return Object.assign(L, over || {});
+}
+function ySgd(fmt){ return { gridcolor:'#f0f0ea', linecolor:'#d5d3ca', linewidth:1, showgrid:true,
+  gridwidth:1, side:'right', zeroline:false, tickfont:{ size:11, family:'JetBrains Mono' },
+  tickprefix:'S$', tickformat: fmt || ',.2f' }; }
+function yPct(fmt){ return { gridcolor:'#f0f0ea', linecolor:'#d5d3ca', linewidth:1, showgrid:true,
+  gridwidth:1, side:'right', zeroline:false, tickfont:{ size:11, family:'JetBrains Mono' },
+  tickprefix:'', ticksuffix:'%', tickformat: fmt || '+,.0f' }; }
+
+/* (a) total return %, rebased to 0% at the window start. Custom pill row. */
+const RETURN_WINDOWS = ['1M', '3M', '6M', 'YTD', 'MAX'];
+let returnKey = 'MAX';
+function windowCutoff(dates, key){
+  const last = dates[dates.length - 1];
+  const [ly, lm, ld] = last.split('-').map(Number);  // ISO months 1-indexed
+  if (key === 'MAX') return dates[0];
+  if (key === 'YTD') return ly + '-01-01';
+  const back = { '1M': 1, '3M': 3, '6M': 6 }[key];
+  const dt = new Date(Date.UTC(ly, lm - 1, ld));      // JS Date months 0-indexed
+  dt.setUTCMonth(dt.getUTCMonth() - back);
+  return dt.toISOString().slice(0, 10);
+}
+function drawReturn(p, key){
+  const s = p.series;
+  const cut = windowCutoff(s.dates, key);
+  let i0 = s.dates.findIndex(d => d >= cut);
+  if (i0 < 0) i0 = 0;
+  const wd = s.dates.slice(i0);
+  const base = s.outcome[i0];
+  const wy = s.outcome.slice(i0).map(v => (v / base - 1) * 100);
+  // GUARD: window must re-anchor to exactly 0% at its first date (design.md)
+  if (Math.abs(wy[0]) > 1e-9)
+    console.error('rebase off-by-one: ' + key + ' starts at ' + wy[0] + '%, expected 0');
+  // GUARD: MAX endpoint must reconcile with the engine's headline total-return
+  if (key === 'MAX'){
+    const endPct = wy[wy.length - 1] / 100;
+    if (Math.abs(endPct - p.money.total_outcome_pct) > 5e-4)
+      console.error('MAX total-return ' + endPct + ' != money.total_outcome_pct ' + p.money.total_outcome_pct);
+  }
+  const trace = [{ x: wd, y: wy, mode: 'lines', name: 'Total return',
+    line: { color: '#1a8754', width: 3.5 }, fill: 'tozeroy', fillcolor: 'rgba(26,135,84,0.06)',
+    hovertemplate: '%{x|%d %b %Y}<br>%{y:+.1f}%<extra></extra>' }];
+  const layout = houseLayout({ showlegend: false, yaxis: yPct('+,.0f'),
+    shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: 0, y1: 0,
+               line: { color: '#c0beb5', width: 1, dash: 'dot' } }] });
+  Plotly.react('c-return', trace, layout, { displayModeBar: false, responsive: true });
+}
+
+/* (b) drawdown on the OUTCOME series, reconciled against engine risk.max_dd. */
+function renderDrawdown(p){
+  const s = p.series;
+  let peak = -Infinity;
+  const dd = s.outcome.map(v => { if (v > peak) peak = v; return (v / peak - 1) * 100; });
+  const minDd = Math.min.apply(null, dd) / 100;
+  // GUARD: client drawdown floor must match the engine's max_dd within rounding
+  if (Math.abs(minDd - p.risk.max_dd) > 5e-4)
+    console.error('client drawdown ' + minDd + ' != engine risk.max_dd ' + p.risk.max_dd);
+  const r = p.risk, ti = s.dates.indexOf(r.max_dd_trough);
+  const trace = [{ x: s.dates, y: dd, mode: 'lines', name: 'Drawdown',
+    line: { color: '#c0392b', width: 3.5 }, fill: 'tozeroy', fillcolor: 'rgba(192,57,43,0.07)',
+    hovertemplate: '%{x|%d %b %Y}<br>%{y:.1f}%<extra></extra>' }];
+  const layout = houseLayout({ showlegend: false, yaxis: yPct('.0f'),
+    annotations: ti >= 0 ? [{ x: r.max_dd_trough, y: dd[ti],
+      text: 'biggest fall ' + pct(r.max_dd), showarrow: true, arrowhead: 0, ax: 0, ay: -30,
+      font: { size: 11, family: 'JetBrains Mono', color: '#a93226' },
+      bgcolor: '#fff', bordercolor: '#d5d3ca', borderpad: 3 }] : [] });
+  Plotly.react('c-dd', trace, layout, { displayModeBar: false, responsive: true });
+}
+
+/* (c) 200-trading-day trend of RAW close, with an above/below pill. */
+function renderTrend(p){
+  const t = p.trend;
+  const traces = [
+    { x: t.dates, y: t.close, name: 'ETF price', mode: 'lines',
+      line: { color: '#1a8754', width: 3.5 }, hovertemplate: 'Price: S$%{y:.3f}<extra></extra>' },
+    { x: t.dates, y: t.sma, name: t.sma_window + '-day average', mode: 'lines',
+      line: { color: '#b45309', width: 1.3 }, hovertemplate: t.sma_window + '-day avg: S$%{y:.3f}<extra></extra>' }
+  ];
+  Plotly.react('c-trend', traces, houseLayout({ yaxis: ySgd('.2f') }),
+    { displayModeBar: false, responsive: true });
+  const pill = document.getElementById('trend-pill');
+  pill.className = 'abpill ' + (t.above ? 'above' : 'below');
+  pill.textContent = (t.above ? 'above' : 'below') + ' ' + t.sma_window + '-day avg · ' + pct(t.distance_pct);
+}
+
+/* (d) worst-period tiles — engine risk stats verbatim, not recomputed. */
+function renderTiles(p){
+  const r = p.risk;
+  const tile = (label, val, cls, sub) =>
+    '<div class="kpi"><div class="kpi-label">' + label + '</div>' +
+    '<div class="kpi-val ' + (cls || '') + '">' + val + '</div>' +
+    (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
+  document.getElementById('cl-tiles').innerHTML =
+    tile('Biggest fall', pct(r.max_dd), 'neg', fmtDate(r.max_dd_peak) + ' → ' + fmtDate(r.max_dd_trough)) +
+    tile('Fall right now', pct(r.current_dd), r.current_dd < 0 ? 'neg' : '',
+         r.max_dd_recovered ? 'last recovered ' + fmtMon(r.max_dd_recovered) : '') +
+    tile('Worst day', r.worst_day.end_date ? pct(r.worst_day.pct) : 'n/a', 'neg',
+         r.worst_day.end_date ? fmtDate(r.worst_day.end_date) : '') +
+    tile('Worst week', r.worst_5d.end_date ? pct(r.worst_5d.pct) : 'n/a', 'neg',
+         r.worst_5d.end_date ? 'to ' + fmtDate(r.worst_5d.end_date) : '') +
+    tile('Worst month', r.worst_21d.end_date ? pct(r.worst_21d.pct) : 'n/a', 'neg',
+         r.worst_21d.end_date ? 'to ' + fmtDate(r.worst_21d.end_date) : '');
+}
+
+/* (e) holdings table — multi-position-ready; today it renders one line. */
+function renderHoldings(p){
+  const buys = p.events.buys;
+  const cost = buys.reduce((a, b) => a + b.cost, 0);
+  const prov = buys.some(b => b.provisional);
+  const holdings = [{ name: p.ticker, units: p.position.units, cost: cost,
+    avg: cost / p.position.units, provisional: prov,
+    last: p.position.last_close, value: p.position.value }];
+  const head = '<table class="htable"><thead><tr>' +
+    ['Holding', 'Units', 'Avg cost', 'Cost', 'Last', 'Value', 'Return'].map(h => '<th>' + h + '</th>').join('') +
+    '</tr></thead><tbody>';
+  const body = holdings.map(h => {
+    const gain = h.value - h.cost, ret = h.cost ? gain / h.cost : 0;
+    const cls = gain >= 0 ? 'pos' : 'neg';
+    return '<tr>' +
+      '<td class="name">' + h.name + '</td>' +
+      '<td>' + h.units.toLocaleString('en-US') + '</td>' +
+      '<td>' + sgd(h.avg) + '</td>' +
+      '<td>' + sgd(h.cost) + (h.provisional ? ' <span class="prov">provisional</span>' : '') + '</td>' +
+      '<td>S$' + h.last.toFixed(3) + '</td>' +
+      '<td>' + sgd(h.value) + '</td>' +
+      '<td class="' + cls + '">' + pct(ret) + '</td>' +
+    '</tr>';
+  }).join('');
+  document.getElementById('cl-holdings').innerHTML = head + body + '</tbody></table>' +
+    '<p class="tbl-note">Return here is price only — value against cost. Dividends of <b>' + sgd(p.money.dividends_received) +
+    '</b> are on top of this; the total-return chart above includes them.</p>';
+}
+
+/* (f) since-2008 context on ADJUSTED close (dividends included), labelled. */
+function troughPoint(monthly, e){
+  // deepest monthly point inside the episode window — sits at the visible low
+  const hi = e.recover_date || monthly[monthly.length - 1][0];
+  let best = null;
+  for (const [d, v] of monthly)
+    if (d >= e.peak_date && d <= hi && (!best || v < best[1])) best = [d, v];
+  return best;
+}
+function renderHistory(edu){
+  const m = edu.series_monthly;
+  const trace = [{ x: m.map(r => r[0]), y: m.map(r => r[1]), mode: 'lines',
+    name: 'STI, dividends included', line: { color: '#2563eb', width: 2 },
+    hovertemplate: '%{x|%b %Y}<br>S$%{y:.2f}<extra></extra>' }];
+  const shapes = [], anns = [];
+  (edu.episodes || []).slice(0, 3).forEach(e => {
+    shapes.push({ type: 'rect', xref: 'x', x0: e.peak_date, x1: e.recover_date || edu.history_end,
+      yref: 'paper', y0: 0, y1: 1, fillcolor: 'rgba(192,57,43,0.05)', line: { width: 0 }, layer: 'below' });
+    const tp = troughPoint(m, e);
+    if (tp) anns.push({ x: tp[0], y: tp[1], ax: 0, ay: 30, showarrow: true, arrowhead: 0,
+      text: pct(e.depth_pct) + (e.recover_date ? '<br>back ' + fmtMon(e.recover_date) : '<br>not yet back'),
+      align: 'center', font: { size: 10, family: 'JetBrains Mono', color: '#a93226' },
+      bgcolor: '#fff', bordercolor: '#d5d3ca', borderpad: 2 });
+  });
+  Plotly.react('c-history', trace, houseLayout({ showlegend: false, yaxis: ySgd('.1f'),
+    margin: { t: 10, b: 34, l: 10, r: 56 }, shapes: shapes, annotations: anns }),
+    { displayModeBar: false, responsive: true });
+}
+
+let closerRendered = false;
+function renderCloser(data){
+  const p = data.portfolio, edu = data.education;
+  const seg = document.getElementById('tr-seg');
+  seg.innerHTML = RETURN_WINDOWS.map(w =>
+    '<button data-w="' + w + '"' + (w === returnKey ? ' class="active"' : '') + '>' + w + '</button>').join('');
+  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    returnKey = b.dataset.w;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+    drawReturn(p, returnKey);
+  }));
+  drawReturn(p, returnKey);
+  renderDrawdown(p);
+  renderTrend(p);
+  renderTiles(p);
+  renderHoldings(p);
+  renderHistory(edu);
+}
+
+/* Tab machinery. Tab-2 charts render lazily on first show (they would lay out
+   at 0px wide while their panel is hidden); every show re-runs Plotly resize. */
+function resizePanel(id){
+  document.querySelectorAll('#' + id + ' .js-plotly-plot').forEach(el => Plotly.Plots.resize(el));
+}
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(t => {
+    const on = t.dataset.tab === name;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.getElementById('panel-money').hidden = name !== 'money';
+  document.getElementById('panel-closer').hidden = name !== 'closer';
+  if (name === 'closer' && !closerRendered){ renderCloser(window.__RENDER_DATA__); closerRendered = true; }
+  resizePanel(name === 'closer' ? 'panel-closer' : 'panel-money');
+}
+
 function render(data){
+  window.__RENDER_DATA__ = data;
   const p = data.portfolio, edu = data.education, s = data.status;
   renderPills(p, s);
   renderHeadline(p);
@@ -468,6 +772,8 @@ function render(data){
   renderDivs(p);
   renderLearn(p);
   renderCheck(p, edu, s);
+  document.querySelectorAll('.tab').forEach(t =>
+    t.addEventListener('click', () => showTab(t.dataset.tab)));
 }
 
 loadData().then(render).catch(err => {

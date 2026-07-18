@@ -132,6 +132,7 @@ def build(prices, ledger_rows):
                    "outcome": s_outcome, "invested": s_invested},
         "events": {"buys": buys, "divs": divs},
         "risk": risk,
+        "trend": _trend(rows),
         "milestones": milestones,
     }
     education = _education(rows)
@@ -205,6 +206,51 @@ def _worst_change(s_dates, series, n):
         if chg < worst:
             worst, when = chg, s_dates[i]
     return {"pct": round(worst, 6), "end_date": when}
+
+
+def _trend(rows, window_months=15, sma_window=200):
+    """Price-trend block for the 'look closer' layer: RAW close and its
+    200-TRADING-day simple moving average, sliced to the last ~15 months.
+
+    BINDING: the SMA is computed on r[4] (raw close) only — adjclose (r[5])
+    never enters here, and this block never feeds the valuation path. The
+    average spans 200 *trading* rows, not calendar days, via a rolling sum.
+    SMA[i] is null until 200 rows exist (i >= sma_window-1)."""
+    dates = [r[0] for r in rows]
+    close = [r[4] for r in rows]  # RAW close — NOT adjclose
+    n = len(rows)
+    sma = [None] * n
+    run = 0.0
+    for i in range(n):
+        run += close[i]
+        if i >= sma_window:            # drop the row that fell out of the window
+            run -= close[i - sma_window]
+        if i >= sma_window - 1:        # full 200-row window available
+            sma[i] = round(run / sma_window, 4)
+
+    # cutoff = window_months before the last trading date. Python date months
+    # are 1-indexed; work in a 0-indexed month count then convert back.
+    last = _d(dates[-1])
+    months0 = last.year * 12 + (last.month - 1) - window_months
+    cy, cm0 = divmod(months0, 12)
+    cutoff = date(cy, cm0 + 1, min(last.day, 28)).isoformat()  # clamp day, 1-indexed month
+    keep = [i for i, d in enumerate(dates) if d >= cutoff]
+
+    close_now, sma_now = close[-1], sma[-1]
+    above = sma_now is not None and close_now >= sma_now
+    distance = (close_now / sma_now - 1.0) if sma_now else None
+    return {
+        "sma_window": sma_window,
+        "window_months": window_months,
+        "as_of": dates[-1],
+        "dates": [dates[i] for i in keep],
+        "close": [round(close[i], 4) for i in keep],
+        "sma": [sma[i] for i in keep],
+        "close_now": round(close_now, 4),
+        "sma_now": sma_now,
+        "above": above,
+        "distance_pct": round(distance, 6) if distance is not None else None,
+    }
 
 
 def _milestones(s_dates, s_outcome, s_invested, divs, risk):
