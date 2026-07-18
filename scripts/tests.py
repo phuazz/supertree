@@ -250,6 +250,49 @@ def test_education_episodes():
     check("education: 15% fall is not an episode", edu2["episodes"] == [])
 
 
+def test_projection_compound_maths():
+    # Lump pin: monthly compounding equals annual at the year marks, so
+    # 1,000 @ 5% for 10y = 1000 * 1.05^10 = 1,628.894... -> 1628.89
+    proj = engine._projection(1000.0, "2026-07-17",
+                              bands={"low": 0.03, "mid": 0.05, "high": 0.08}, years=10)
+    check("projection: 1,000 @5% 10y = 1628.89",
+          abs(proj["end"]["mid"] - 1628.89) < 0.01, f'got {proj["end"]["mid"]}')
+    check("projection: all bands start at the principal",
+          proj["series"]["low"][0] == 1000.0 and proj["series"]["high"][0] == 1000.0)
+    check("projection: 11 yearly anchor points (0..10)",
+          len(proj["dates"]) == 11 and len(proj["series"]["mid"]) == 11)
+    mono = all(proj["series"]["low"][k] <= proj["series"]["mid"][k] <= proj["series"]["high"][k]
+               for k in range(11))
+    check("projection: band monotonic low<=mid<=high", mono)
+    # NEVER rule-of-72: true 8% over 10y is 1000*1.08^10, not 1000*2^(10/9).
+    # Match the true endpoint to the cent, and stay far from the rule-of-72 one.
+    true_end = 1000.0 * 1.08 ** 10       # 2158.92
+    r72_end = 1000.0 * 2 ** (10 / 9.0)   # 2160.12 — the shortcut we must NOT use
+    check("projection: true compounding (1.08^10), not rule-of-72",
+          abs(proj["end"]["high"] - true_end) < 0.05 and abs(proj["end"]["high"] - r72_end) > 1.0,
+          f'got {proj["end"]["high"]}, true {true_end:.2f}, rule-of-72 {r72_end:.2f}')
+
+
+def test_projection_monthly_contribution_reference():
+    # The what-if simulator adds S$C/month. Its closed-form annuity MUST equal
+    # an independent month-by-month loop (ordinary annuity, contribution end of
+    # month). This pins the JS formula the UI will mirror.
+    P, C, r, years = 2000.0, 100.0, 0.05, 10
+    m = (1.0 + r) ** (1.0 / 12.0) - 1.0
+    N = years * 12
+    v = P
+    for _ in range(N):          # reference: grow, then add the month's deposit
+        v = v * (1.0 + m) + C
+    closed = P * (1.0 + m) ** N + C * (((1.0 + m) ** N - 1.0) / m)
+    check("projection: annuity closed-form == month-by-month loop",
+          abs(closed - v) < 1e-6, f'{closed} vs {v}')
+    # engine base (no contributions) must be the pure lump term
+    base = engine._projection(P, "2026-07-17",
+                              bands={"low": r, "mid": r, "high": r}, years=years)["end"]["mid"]
+    check("projection: engine base == P*(1+m)^N (contribution-free)",
+          abs(base - P * (1.0 + m) ** N) < 0.01, f'{base} vs {P * (1.0 + m) ** N}')
+
+
 def test_trend_sma():
     # Hand-computed 4-trading-day SMA on a known raw-close series.
     # closes 1..6; SMA[3]=(1+2+3+4)/4=2.5, SMA[4]=3.5, SMA[5]=4.5; [0..2]=None

@@ -12,6 +12,16 @@ from datetime import date  # Python datetime: months are 1-indexed
 DD_EPISODE_THRESHOLD = -0.20  # education layer: falls of 20%+ count as episodes
 DD5 = -0.05                   # milestone: first 5% drawdown experienced/survived
 
+# Forward-view bands — nominal SGD total-return CAGR. SIGNED OFF by ZH 2026-07-18.
+# Provenance (all computed from data/prices.json, Yahoo ES3.SI adjusted close):
+#   low  0.040  cautious haircut below the full-cycle total return.
+#   mid  0.051  STI total-return CAGR since 2008 (education.long_run, 18.5y,
+#               includes the full GFC cycle) — the conservative full-cycle base.
+#   high 0.080  moderated optimistic; deliberately BELOW the 10.4% (last 10y)
+#               and 17.0% (last 5y) windows so the band is not boom-anchored.
+PROJECTION_BANDS = {"low": 0.040, "mid": 0.051, "high": 0.080}
+PROJECTION_YEARS = 10  # round horizon; NO age or birth-year ever reaches the page
+
 
 class EngineError(Exception):
     pass
@@ -133,6 +143,7 @@ def build(prices, ledger_rows):
         "events": {"buys": buys, "divs": divs},
         "risk": risk,
         "trend": _trend(rows),
+        "projection": _projection(value_now, as_of),
         "milestones": milestones,
     }
     education = _education(rows)
@@ -250,6 +261,42 @@ def _trend(rows, window_months=15, sma_window=200):
         "sma_now": sma_now,
         "above": above,
         "distance_pct": round(distance, 6) if distance is not None else None,
+    }
+
+
+def _projection(value_now, as_of, bands=None, years=None):
+    """Forward illustration: today's ETF value compounded at the signed-off
+    low/mid/high total-return rates over a round horizon.
+
+    BINDING: TRUE compound maths only — monthly rate m = (1+r)^(1/12)-1 and
+    value = P*(1+m)^months. NEVER rule-of-72 / 2^doublings. Total-return basis
+    assumes dividends are reinvested; this is a labelled illustration, not a
+    promise. Emits one anchor point per year (months 0,12,...). The band must
+    stay monotonic low<=mid<=high at every step (loud on violation)."""
+    bands = PROJECTION_BANDS if bands is None else bands
+    years = PROJECTION_YEARS if years is None else years
+    y, mo, day = (int(x) for x in as_of.split("-"))  # ISO months 1-indexed
+    P = float(value_now)
+    dates = [date(y + k, mo, day).isoformat() for k in range(years + 1)]  # months 1-indexed in ctor
+    series, ends = {}, {}
+    for name, r in bands.items():
+        m = (1.0 + r) ** (1.0 / 12.0) - 1.0
+        series[name] = [round(P * (1.0 + m) ** (k * 12), 2) for k in range(years + 1)]
+        ends[name] = series[name][-1]
+    order = list(bands)  # rely on low/mid/high insertion order
+    for k in range(years + 1):
+        vals = [series[n][k] for n in order]
+        if vals != sorted(vals):
+            raise EngineError(f"projection band not monotonic at step {k}: {vals}")
+    return {
+        "basis": "total_return_reinvested_illustration",
+        "start_value": round(P, 2),
+        "start_date": as_of,
+        "years": years,
+        "rates": dict(bands),
+        "dates": dates,
+        "series": series,
+        "end": {n: round(ends[n], 2) for n in order},
     }
 
 

@@ -151,6 +151,26 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 /* 13px cells are small text -> -text variants per contrast rule */
 .htable td.pos { color:var(--g-text); } .htable td.neg { color:var(--r-text); }
 .tbl-note { font-size:12.5px; color:var(--t3-text); margin-top:12px; }
+/* forward view + what-if simulator */
+.assume { font-size:12.5px; color:var(--a-text); background:var(--a-bg); border:1px solid rgba(180,83,9,0.2); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px; line-height:1.55; }
+.fwd-out { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--bd); border:1px solid var(--bd); border-radius:var(--radius-lg); overflow:hidden; margin-bottom:16px; }
+.fwd-cell { background:var(--bg2); padding:14px 16px; }
+.fwd-cell .kpi-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--t3-text); margin-bottom:4px; }
+.fwd-cell .v { font-family:var(--mono); font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+.fwd-cell.mid { background:var(--g-bg); }
+.fwd-cell.mid .v { color:var(--g-text); }
+.sim { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:4px 0 16px; }
+.sim label { font-size:14px; color:var(--t2); font-weight:600; }
+.money-in { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--bd2); border-radius:var(--radius); background:var(--bg2); padding:0 10px; min-height:44px; }
+.money-in .cur { font-family:var(--mono); font-size:14px; color:var(--t3-text); }
+.money-in input { border:none; outline:none; background:none; font-family:var(--mono); font-size:16px; font-weight:600; color:var(--t1); width:90px; padding:8px 4px; }
+.chips { display:inline-flex; gap:6px; flex-wrap:wrap; }
+.chip { min-height:44px; padding:0 14px; border:1px solid var(--bd2); border-radius:999px; background:var(--bg3); font-family:var(--mono); font-size:12px; font-weight:600; color:var(--t2); cursor:pointer; }
+.chip:hover { background:var(--bg-hover); }
+.chip.active { background:var(--g-bg); border-color:rgba(26,135,84,0.25); color:var(--g-text); }
+.sim-note { font-size:14px; line-height:1.6; color:var(--t2); margin-top:14px; }
+.sim-note b { color:var(--t1); font-weight:600; }
+@media (max-width:768px){ .fwd-out { grid-template-columns:1fr; } }
 @media (max-width:1200px){ .kpi-strip { grid-template-columns:repeat(3,1fr); } }
 @media (max-width:900px){ .duo, .learn-grid { grid-template-columns:1fr; } .tree-row { flex-direction:column; } .tree-row svg { width:60%; max-width:230px; } .tiles { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } .headline .big { font-size:34px; } .htable { font-size:12px; } .htable th, .htable td { padding:8px 6px; } }
@@ -249,6 +269,20 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
       <div class="card-sub">Adjusted for dividends, since 2008. The three deepest falls are marked with how far they dropped and when they climbed back.</div>
       <div id="c-history" style="height:340px"></div>
     </div>
+
+    <div class="card">
+      <div class="card-title">Looking forward — where this could grow</div>
+      <div class="card-sub">A picture, not a promise. Nobody knows the future; the real path will be bumpy, with falls along the way.</div>
+      <div class="assume" id="fwd-assume"></div>
+      <div class="fwd-out" id="fwd-out"></div>
+      <div class="sim">
+        <label for="sim-add">Add money every month:</label>
+        <span class="money-in"><span class="cur">S$</span><input id="sim-add" type="text" inputmode="numeric" autocomplete="off" value="0" aria-label="Amount added each month in Singapore dollars"></span>
+        <span class="chips" id="sim-chips"></span>
+      </div>
+      <div id="c-forward" style="height:330px"></div>
+      <p class="sim-note" id="sim-note"></p>
+    </div>
   </div><!-- /panel-closer -->
 </div>
 <script>
@@ -270,6 +304,15 @@ const sgd  = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, m
 const sgd0 = n => 'S$' + Math.round(Math.abs(n)).toLocaleString('en-US');
 const signed0 = n => (n < 0 ? '-' : '+') + sgd0(n);
 const pct  = n => (n >= 0 ? '+' : '') + (100 * n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+/* Money-input helpers (design.md): fields are type="text" inputmode="numeric",
+   so a grouped value like "1,000" is never discarded the way type="number"
+   would. numOf strips separators before parsing; +"1,000" alone is NaN. */
+function numOf(s){
+  if (typeof s === 'number') return s;
+  const n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
+  return isFinite(n) ? n : NaN;
+}
+const groupMoney = n => Math.round(n).toLocaleString('en-US');  // >=1,000 comma-grouped
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtDate(iso){
@@ -426,11 +469,23 @@ function renderTree(p){
       if (li === 0) el.push('<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="3" fill="#22a366" opacity="0.85"/>');
     }
   });
-  // badge lights — unlit until milestones ship (Session 4)
-  [-55, -28, 0, 28, 55].forEach(deg => {
-    const rad = deg * Math.PI / 180, d = Math.max(L * 0.72, 34);
+  // badge lights, one bulb per milestone. The first-dividend bulb only counts
+  // as EARNED once its ledger row is confirmed (provisional:false); until then
+  // it shows a distinct PENDING ring — never lit on provisional data.
+  const badges = milestoneBadges(p.milestones);
+  const angles = [-54, -18, 18, 54];
+  badges.forEach((b, i) => {
+    const rad = angles[i] * Math.PI / 180, d = Math.max(L * 0.72, 34);
     const x = cx + Math.sin(rad) * d, y = topY - Math.cos(rad) * d;
-    el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.5" fill="#eeeee8" stroke="#c0beb5" stroke-width="1.2"/>');
+    if (b.state === 'earned'){
+      el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="8" fill="#22a366" opacity="0.22"/>');
+      el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.6" fill="#1a8754" stroke="#ffffff" stroke-width="1.2"/>');
+      el.push('<circle cx="' + (x - 1.3).toFixed(1) + '" cy="' + (y - 1.3).toFixed(1) + '" r="1.4" fill="#eafff4"/>');
+    } else if (b.state === 'pending'){
+      el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.6" fill="#ffffff" stroke="#b45309" stroke-width="1.4" stroke-dasharray="2 2"/>');
+    } else {
+      el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.6" fill="#eeeee8" stroke="#c0beb5" stroke-width="1.2"/>');
+    }
   });
   document.getElementById('tree').innerHTML = el.join('');
 
@@ -444,7 +499,37 @@ function renderTree(p){
       ? '<b style="color:var(--g-text)">' + signed0(growth) + '</b>. The market added ' + signed0(m.market_gain) + ' and companies paid you ' + sgd(m.dividends_received) + ' in cash.'
       : '<b style="color:var(--r-text)">' + signed0(growth) + '</b> right now. The tree is resting; frames hold while canopies regrow.') +
     '</span></div>' +
-    '<div class="lg muted"><span></span><span>Real supertrees in Gardens by the Bay grew over steel frames. Yours works the same way: the frame is what you planted, the green is what time added. The little bulbs are badge lights — they switch on when you reach milestones.</span></div>';
+    '<div class="lg"><span class="sw" style="background:#1a8754;border-radius:50%;box-shadow:0 0 0 3px rgba(34,163,102,0.22)"></span>' +
+    '<span><b>Badge lights</b> — small wins along the way. ' + badgeLegendText(badges) + '</span></div>' +
+    '<div class="lg muted"><span></span><span>Real supertrees in Gardens by the Bay grew over steel frames. Yours works the same way: the frame is what you planted, the green is what time added.</span></div>';
+}
+
+/* Milestone -> badge bulbs. The first-dividend badge is EARNED only when its
+   ledger row is confirmed (provisional:false); while the row is still a draft
+   it is PENDING, never lit. The other badges light on achievement. */
+function milestoneBadges(ms){
+  const divConfirmed = ms.first_dividend.achieved && ms.first_dividend.provisional === false;
+  const divPending = ms.first_dividend.achieved && ms.first_dividend.provisional !== false;
+  return [
+    { label: 'First dividend', state: divConfirmed ? 'earned' : (divPending ? 'pending' : 'locked'),
+      when: ms.first_dividend.date },
+    { label: 'Grew by 10 in every 100', state: ms.growth_10pct.achieved ? 'earned' : 'locked',
+      when: ms.growth_10pct.date },
+    { label: 'Lived through a 5% fall', state: ms.dd5_experienced.achieved ? 'earned' : 'locked',
+      when: ms.dd5_experienced.trough_date },
+    { label: 'Grew back after a fall', state: ms.dd5_survived.achieved ? 'earned' : 'locked',
+      when: ms.dd5_survived.recovered_date }
+  ];
+}
+function badgeLegendText(badges){
+  const earned = badges.filter(b => b.state === 'earned').map(b => b.label);
+  const pending = badges.filter(b => b.state === 'pending').map(b => b.label);
+  const waiting = badges.filter(b => b.state === 'locked').map(b => b.label);
+  let t = 'A green light is one you have earned. A grey light is one still waiting. ';
+  if (earned.length) t += 'Earned: ' + earned.join(', ') + '. ';
+  if (pending.length) t += pending.join(', ') + ' is <b style="color:var(--a-text)">pending</b> — it lights up once the payment is confirmed. ';
+  if (waiting.length) t += 'Still waiting: ' + waiting.join(', ') + '.';
+  return t;
 }
 
 function renderWeather(p, edu){
@@ -741,6 +826,96 @@ function renderCloser(data){
   renderTiles(p);
   renderHoldings(p);
   renderHistory(edu);
+  renderProjection(p);
+}
+
+/* Forward view — today's ETF value compounded on the signed-off low/mid/high
+   bands, plus a monthly what-if. TRUE compound maths (monthly rate), mirrored
+   from the engine; with no contributions the client series must reproduce the
+   engine's projection.series within rounding (loud on drift). */
+function ratePct(r){ return (r * 100).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
+function projSeries(P, r, years, C){
+  const m = Math.pow(1 + r, 1 / 12) - 1;
+  const out = [];
+  for (let k = 0; k <= years; k++){
+    const N = k * 12;
+    const lump = P * Math.pow(1 + m, N);
+    const ann = m === 0 ? C * N : C * ((Math.pow(1 + m, N) - 1) / m);
+    out.push(lump + ann);
+  }
+  return out;
+}
+let simAdd = 0;
+function renderProjection(p){
+  const pr = p.projection;
+  document.getElementById('fwd-assume').innerHTML =
+    'This assumes a steady yearly growth rate — <b>low ' + ratePct(pr.rates.low) + '</b>, <b>middle ' +
+    ratePct(pr.rates.mid) + '</b>, <b>high ' + ratePct(pr.rates.high) + '</b> — with dividends put back in. ' +
+    'Real years are never that smooth: since 2008 this fund once fell about 58% and took years to climb back.';
+  const chips = [0, 50, 100, 200];
+  const cw = document.getElementById('sim-chips');
+  cw.innerHTML = chips.map(c => '<button class="chip" data-c="' + c + '">S$' + c + '</button>').join('');
+  cw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
+    simAdd = +b.dataset.c;
+    document.getElementById('sim-add').value = groupMoney(simAdd);
+    drawForward(p);
+  }));
+  const input = document.getElementById('sim-add');
+  input.addEventListener('input', () => {
+    const v = numOf(input.value);
+    simAdd = (isFinite(v) && v > 0) ? Math.min(v, 100000) : 0;
+    drawForward(p);
+  });
+  input.addEventListener('blur', () => { input.value = groupMoney(simAdd); });
+  drawForward(p);
+}
+function drawForward(p){
+  const pr = p.projection, P = pr.start_value, years = pr.years, C = simAdd, dates = pr.dates;
+  const band = { low: projSeries(P, pr.rates.low, years, C),
+                 mid: projSeries(P, pr.rates.mid, years, C),
+                 high: projSeries(P, pr.rates.high, years, C) };
+  // GUARD: contribution-free client series must match the engine's band series
+  if (C === 0){
+    ['low', 'mid', 'high'].forEach(k => pr.series[k].forEach((ev, i) => {
+      if (Math.abs(ev - band[k][i]) > 0.5)
+        console.error('forward drift ' + k + ' yr' + i + ': engine ' + ev + ' vs client ' + band[k][i]);
+    }));
+  }
+  const end = { low: band.low[years], mid: band.mid[years], high: band.high[years] };
+  document.querySelectorAll('#sim-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.c === C));
+  const cells = [['low', 'Low picture'], ['mid', 'Middle guess'], ['high', 'High picture']];
+  document.getElementById('fwd-out').innerHTML = cells.map(c =>
+    '<div class="fwd-cell ' + c[0] + '"><div class="kpi-label">' + c[1] + ' in ' + years + ' years</div>' +
+    '<div class="v">S$' + groupMoney(end[c[0]]) + '</div></div>').join('');
+  const investedNow = p.money.invested;
+  const moneyIn = dates.map((d, k) => investedNow + C * 12 * k);
+  const traces = [
+    { x: dates, y: band.low, mode: 'lines', name: 'Low', line: { color: '#22a366', width: 1.3 },
+      hovertemplate: 'Low: S$%{y:,.0f}<extra></extra>' },
+    { x: dates, y: band.high, mode: 'lines', name: 'High', line: { color: '#22a366', width: 1.3 },
+      fill: 'tonexty', fillcolor: 'rgba(26,135,84,0.10)', hovertemplate: 'High: S$%{y:,.0f}<extra></extra>' },
+    { x: dates, y: band.mid, mode: 'lines', name: 'Middle', line: { color: '#1a8754', width: 3.5 },
+      hovertemplate: 'Middle: S$%{y:,.0f}<extra></extra>' },
+    { x: dates, y: moneyIn, mode: 'lines', name: 'Money you put in',
+      line: { color: '#c0beb5', width: 1.3, dash: 'dot' }, hovertemplate: 'Money in: S$%{y:,.0f}<extra></extra>' }
+  ];
+  const layout = houseLayout({ yaxis: ySgd(',.0f'),
+    annotations: [{ xref: 'paper', x: 1, yref: 'y', y: end.mid, xanchor: 'left', xshift: 6,
+      text: 'S$' + groupMoney(end.mid), showarrow: false,
+      font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' }, bgcolor: '#1a8754', borderpad: 3 }] });
+  Plotly.react('c-forward', traces, layout, { displayModeBar: false, responsive: true });
+  const note = document.getElementById('sim-note');
+  if (C > 0){
+    note.innerHTML = 'If you add <b>S$' + groupMoney(C) + '</b> every month and it grows in the middle way, in ' +
+      years + ' years it could be worth about <b>S$' + groupMoney(end.mid) + '</b> — somewhere between <b>S$' +
+      groupMoney(end.low) + '</b> and <b>S$' + groupMoney(end.high) + '</b>. Over those ' + years +
+      ' years you would put in <b>S$' + groupMoney(C * 12 * years) + '</b> more of your own money.';
+  } else {
+    note.innerHTML = 'With no new money added, in ' + years + ' years the <b>S$' + groupMoney(P) +
+      '</b> you have today could grow to about <b>S$' + groupMoney(end.mid) + '</b> in the middle picture — ' +
+      'somewhere between <b>S$' + groupMoney(end.low) + '</b> and <b>S$' + groupMoney(end.high) +
+      '</b>. Try adding a little each month to see what changes.';
+  }
 }
 
 /* Tab machinery. Tab-2 charts render lazily on first show (they would lay out
