@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Phua JR</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* surfaces */
+  --bg: #fafaf8;        /* page background — warm off-white */
+  --bg2: #ffffff;       /* cards, raised surfaces */
+  --bg3: #f5f5f0;       /* table headers, inset chips */
+  --bg4: #eeeee8;       /* progress tracks, deep insets */
+  --bg-hover: #f0f0ea;  /* row / cell hover */
+  /* borders */
+  --bd: #e2e0d8;        /* default hairline */
+  --bd2: #d5d3ca;       /* medium */
+  --bd-strong: #c0beb5; /* emphasis / axis lines */
+  /* text */
+  --t1: #1a1a18;        /* primary — near-black */
+  --t2: #5c5c56;        /* secondary */
+  --t3: #8a8a82;        /* tertiary / labels */
+  --t4: #b0b0a8;        /* disabled / faint */
+  /* semantic: green = gain/long, red = loss/short */
+  --g: #1a8754;  --g2: #22a366;  --g-bg: rgba(26,135,84,0.07);  --g-bg2: rgba(26,135,84,0.14);
+  --r: #c0392b;  --r2: #e74c3c;  --r-bg: rgba(192,57,43,0.07);  --r-bg2: rgba(192,57,43,0.14);
+  /* accents: blue = neutral/benchmark, amber = caution, purple = cost, cyan = info, pink = alt */
+  --b: #2563eb;  --b2: #3b82f6;  --b-bg: rgba(37,99,235,0.06);  --b-bg2: rgba(37,99,235,0.12);
+  --a: #b45309;  --a-bg: rgba(180,83,9,0.07);
+  --p: #7c3aed;  --p-bg: rgba(124,58,237,0.06);
+  --c: #0891b2;  --c-bg: rgba(8,145,178,0.06);
+  --pk: #be185d; --pk-bg: rgba(190,24,93,0.06);
+  /* -text variants — use these for TEXT; the values above are for fills,
+     borders, chart lines and large type. */
+  --g-text: #146c43;  --r-text: #a93226;  --b-text: #1d4ed8;  --a-text: #92400e;
+  --p-text: #7c3aed;  --c-text: #0e7490;  --pk-text: #be185d;
+  --t3-text: #66665e; /* muted label text */
+  /* type */
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  /* elevation */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.04);
+  /* radius */
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-height:1.5; }
+.shell { max-width:1520px; margin:0 auto; padding:20px 32px 60px; }
+.masthead { padding:28px 0 22px; border-bottom:2px solid var(--t1); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
+.masthead-left h1 { font-family:var(--serif); font-size:32px; font-weight:400; letter-spacing:-0.5px; }
+.masthead-left h1 em { font-style:italic; color:var(--t3); }
+.pills { display:flex; gap:8px; flex-wrap:wrap; }
+.pill { font-family:var(--mono); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; padding:5px 10px; border-radius:999px; border:1px solid var(--bd2); background:var(--bg3); color:var(--t2); }
+.pill.live  { background:var(--g-bg); border-color:rgba(26,135,84,0.2);  color:var(--g-text); }
+.pill.stale { background:var(--a-bg); border-color:rgba(180,83,9,0.2);   color:var(--a-text); }
+.pill.fail  { background:var(--r-bg); border-color:rgba(192,57,43,0.2);  color:var(--r-text); }
+.banner { margin:18px 0 0; padding:12px 16px; border-radius:var(--radius); font-size:13px; background:var(--a-bg); border:1px solid rgba(180,83,9,0.2); color:var(--a-text); }
+.kpi-strip { margin-top:22px; display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--bd); border:1px solid var(--bd); border-radius:var(--radius-lg); overflow:hidden; }
+.kpi { background:var(--bg2); padding:14px 16px; }
+.kpi-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--t3-text); margin-bottom:4px; }
+.kpi-val { font-family:var(--mono); font-size:24px; font-weight:700; letter-spacing:-0.5px; }
+/* 24px is large text (3:1 suffices) so base --g/--r are allowed here */
+.kpi-val.pos { color:var(--g); } .kpi-val.neg { color:var(--r); }
+.kpi-sub { font-size:11px; color:var(--t3-text); margin-top:2px; font-family:var(--mono); }
+.card { margin-top:22px; background:var(--bg2); border:1px solid var(--bd); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:18px 20px; }
+.card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--t2); margin-bottom:12px; }
+.check { font-family:var(--mono); font-size:12px; color:var(--t2); display:grid; grid-template-columns:220px 1fr; row-gap:5px; }
+.check b { color:var(--t1); font-weight:600; }
+.note { font-size:13px; color:var(--t2); margin-top:14px; }
+@media (max-width:1200px){ .kpi-strip { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="masthead">
+    <div class="masthead-left"><h1>Phua JR <em>— my money, growing</em></h1></div>
+    <div class="pills" id="pills"></div>
+  </div>
+  <div class="banner" id="prov-banner" hidden>Some of these numbers are provisional — the first trade record is a placeholder until the real date and cost are entered.</div>
+  <div class="kpi-strip" id="kpis"></div>
+  <div class="card">
+    <div class="card-title">Engine check — Session 1 shell</div>
+    <div class="check" id="check"></div>
+    <p class="note">The full page — your money's journey, the supertree, the learn cards — is on its way. The numbers above are live, tested and guarded.</p>
+  </div>
+</div>
+<script>
+window.__DATA__ = null;
+
+async function loadData(){
+  if (window.__DATA__) return window.__DATA__;
+  // fetch fallback for local dev: npx serve .  then open /template.html
+  const [portfolio, education, status] = await Promise.all([
+    fetch('data/portfolio.json').then(r => r.json()),
+    fetch('data/education.json').then(r => r.json()),
+    fetch('data/status.json').then(r => r.json())
+  ]);
+  return { portfolio, education, status };
+}
+
+/* All figures >= 1,000 carry thousands separators (house rule). */
+const sgd = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = n => (n >= 0 ? '+' : '') + (100 * n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(iso){
+  // iso months are 1-indexed; the MONTHS array is 0-indexed, hence m - 1
+  const [y, m, d] = iso.split('-').map(Number);
+  return d + ' ' + MONTHS[m - 1] + ' ' + y;
+}
+function daysSince(iso){
+  const [y, m, d] = iso.split('-').map(Number);
+  // JavaScript Date months are 0-indexed, hence m - 1; UTC avoids TZ drift
+  return Math.floor((Date.now() - Date.UTC(y, m - 1, d)) / 86400000);
+}
+
+function kpi(label, val, cls, sub){
+  return '<div class="kpi"><div class="kpi-label">' + label + '</div>' +
+         '<div class="kpi-val ' + (cls || '') + '">' + val + '</div>' +
+         (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
+}
+
+function render(data){
+  const p = data.portfolio, s = data.status;
+  const stale = daysSince(p.as_of) > 7;
+  const guardFail = !s.guard || s.guard.indexOf('pass') !== 0;
+  const pills = [];
+  pills.push('<span class="pill">prices to ' + fmtDate(p.as_of) + '</span>');
+  if (guardFail)  pills.push('<span class="pill fail">refresh failing</span>');
+  else if (stale) pills.push('<span class="pill stale">data stale since ' + fmtDate(p.as_of) + '</span>');
+  else            pills.push('<span class="pill live">data fresh</span>');
+  if (p.provisional) pills.push('<span class="pill stale">provisional</span>');
+  document.getElementById('pills').innerHTML = pills.join('');
+  document.getElementById('prov-banner').hidden = !p.provisional;
+
+  const m = p.money;
+  const sign = v => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
+  document.getElementById('kpis').innerHTML =
+    kpi('My money today', sgd(p.position.value), '', p.position.units.toLocaleString('en-US') + ' units of ' + p.ticker) +
+    kpi('Money I put in', sgd(m.invested)) +
+    kpi('The market added', sgd(m.market_gain), sign(m.market_gain)) +
+    kpi('Companies paid me', sgd(m.dividends_received), sign(m.dividends_received)) +
+    kpi('Total growth', sgd(m.total_outcome), sign(m.total_outcome)) +
+    kpi('Growth', pct(m.total_outcome_pct), sign(m.total_outcome_pct), 'since ' + fmtDate(p.position.first_buy_date));
+
+  const r = p.risk, ms = p.milestones, edu = data.education;
+  const rows = [
+    ['as of', p.as_of],
+    ['units x last close', p.position.units.toLocaleString('en-US') + ' x ' + p.position.last_close + ' = ' + sgd(p.position.value)],
+    ['money-weighted return', p.mwr_annualised == null ? 'n/a' : pct(p.mwr_annualised) + ' annualised'],
+    ['biggest fall (my money)', pct(r.max_dd) + ' (' + fmtDate(r.max_dd_peak) + ' to ' + fmtDate(r.max_dd_trough) + (r.max_dd_recovered ? ', recovered ' + fmtDate(r.max_dd_recovered) : ', not yet recovered') + ')'],
+    ['fall right now', pct(r.current_dd)],
+    ['worst single day', r.worst_day.end_date ? pct(r.worst_day.pct) + ' on ' + fmtDate(r.worst_day.end_date) : 'n/a'],
+    ['worst week (5 sessions)', r.worst_5d.end_date ? pct(r.worst_5d.pct) + ' to ' + fmtDate(r.worst_5d.end_date) : 'n/a'],
+    ['worst month (21 sessions)', r.worst_21d.end_date ? pct(r.worst_21d.pct) + ' to ' + fmtDate(r.worst_21d.end_date) : 'n/a'],
+    ['milestone: first dividend', ms.first_dividend.achieved ? fmtDate(ms.first_dividend.date) + (ms.first_dividend.provisional ? ' (provisional)' : '') : 'not yet'],
+    ['milestone: +10% growth', ms.growth_10pct.achieved ? fmtDate(ms.growth_10pct.date) : 'not yet'],
+    ['milestone: 5% fall survived', ms.dd5_survived.achieved ? 'yes — recovered ' + fmtDate(ms.dd5_survived.recovered_date) : (ms.dd5_experienced.achieved ? 'in one now' : 'not yet')],
+    ['ETF history on record', fmtDate(edu.history_start) + ' to ' + fmtDate(edu.history_end) + ' (Yahoo depth; label everything "since 2008")'],
+    ['deepest fall on record', edu.episodes.length ? pct(edu.episodes[0].depth_pct) + ' (peak ' + fmtDate(edu.episodes[0].peak_date) + ')' : 'none >= 20%'],
+    ['refresh guard', s.guard]
+  ];
+  document.getElementById('check').innerHTML =
+    rows.map(x => '<span>' + x[0] + '</span><b>' + x[1] + '</b>').join('');
+}
+
+loadData().then(render).catch(err => {
+  document.getElementById('check').innerHTML = '<span>load error</span><b>' + err + '</b>';
+});
+</script>
+</body>
+</html>

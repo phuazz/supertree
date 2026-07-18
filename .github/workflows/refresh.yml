@@ -1,0 +1,31 @@
+name: refresh
+
+on:
+  schedule:
+    - cron: "0 13 * * 1-5"  # 21:00 SGT (UTC+8) weekday evenings, after SGX close
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yfinance
+      # Guard before cron (project rule): the suite runs first; a red suite
+      # stops the refresh entirely. fetch.py itself keeps last-good data on a
+      # guard failure, and the page then shows the stale/fail badge.
+      - run: python scripts/tests.py
+      - run: python scripts/pipeline.py --refresh
+      - name: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data docs
+          git diff --cached --quiet || git commit -m "Data refresh (guarded)"
+          git push
