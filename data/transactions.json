@@ -1,0 +1,35 @@
+{
+  "comment": "SOURCE OF TRUTH. Hand-maintained. Dates ISO YYYY-MM-DD and must be SGX trading dates. provisional:true rows are drafts — replace values with actuals and set provisional:false to confirm. See README for schema.",
+  "transactions": [
+    {
+      "date": "2025-06-30",
+      "type": "BUY",
+      "ticker": "ES3.SI",
+      "units": 400,
+      "price": null,
+      "fees": null,
+      "provisional": true,
+      "note": "Inception PLACEHOLDER — real trade date, price and fees to be supplied by ZH. Null price resolves to that day's close (4.04) until confirmed."
+    },
+    {
+      "date": "2025-08-12",
+      "type": "DIV",
+      "ticker": "ES3.SI",
+      "units": 400,
+      "dps": 0.089,
+      "amount": null,
+      "provisional": true,
+      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+    },
+    {
+      "date": "2026-02-11",
+      "type": "DIV",
+      "ticker": "ES3.SI",
+      "units": 400,
+      "dps": 0.085,
+      "amount": null,
+      "provisional": true,
+      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+    }
+  ]
+}
