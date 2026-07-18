@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Phua JR</title>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>
 :root {
   /* surfaces */
@@ -52,7 +53,7 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-height:1.5; }
-.shell { max-width:1520px; margin:0 auto; padding:20px 32px 60px; }
+.shell { max-width:1180px; margin:0 auto; padding:20px 32px 60px; }
 .masthead { padding:28px 0 22px; border-bottom:2px solid var(--t1); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
 .masthead-left h1 { font-family:var(--serif); font-size:32px; font-weight:400; letter-spacing:-0.5px; }
 .masthead-left h1 em { font-style:italic; color:var(--t3); }
@@ -62,6 +63,17 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .pill.stale { background:var(--a-bg); border-color:rgba(180,83,9,0.2);   color:var(--a-text); }
 .pill.fail  { background:var(--r-bg); border-color:rgba(192,57,43,0.2);  color:var(--r-text); }
 .banner { margin:18px 0 0; padding:12px 16px; border-radius:var(--radius); font-size:13px; background:var(--a-bg); border:1px solid rgba(180,83,9,0.2); color:var(--a-text); }
+.card { margin-top:22px; background:var(--bg2); border:1px solid var(--bd); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:20px 22px; }
+.card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--t2); margin-bottom:12px; }
+.card-sub { font-size:13px; color:var(--t3-text); margin:-6px 0 12px; }
+/* headline — the big answer, document-scale type for a young reader */
+.headline h2 { font-family:var(--serif); font-size:28px; font-weight:400; margin-bottom:6px; }
+.headline .big { font-family:var(--mono); font-size:44px; font-weight:700; letter-spacing:-1px; }
+.headline .big small { font-size:20px; font-weight:600; color:var(--t2); letter-spacing:0; margin-left:8px; }
+.headline .big.pos { color:var(--g); } .headline .big.neg { color:var(--r); }
+.headline p { font-size:16px; line-height:1.65; color:var(--t2); max-width:760px; margin-top:10px; }
+.headline p b { color:var(--t1); font-weight:600; }
+/* kpi strip */
 .kpi-strip { margin-top:22px; display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--bd); border:1px solid var(--bd); border-radius:var(--radius-lg); overflow:hidden; }
 .kpi { background:var(--bg2); padding:14px 16px; }
 .kpi-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--t3-text); margin-bottom:4px; }
@@ -69,13 +81,45 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 /* 24px is large text (3:1 suffices) so base --g/--r are allowed here */
 .kpi-val.pos { color:var(--g); } .kpi-val.neg { color:var(--r); }
 .kpi-sub { font-size:11px; color:var(--t3-text); margin-top:2px; font-family:var(--mono); }
-.card { margin-top:22px; background:var(--bg2); border:1px solid var(--bd); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:18px 20px; }
-.card-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--t2); margin-bottom:12px; }
+/* layout groups */
+.duo { display:grid; grid-template-columns:7fr 5fr; gap:22px; margin-top:22px; }
+.duo > .card, .stack > .card { margin-top:0; }
+.stack { display:flex; flex-direction:column; gap:22px; }
+.learn-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:22px; }
+.learn-grid .card { margin-top:0; }
+.learn-grid h3 { font-family:var(--serif); font-size:21px; font-weight:400; margin-bottom:8px; }
+.learn-grid p { font-size:15px; line-height:1.65; color:var(--t2); }
+.learn-grid p b { color:var(--t1); font-weight:600; }
+/* supertree */
+.tree-row { display:flex; gap:20px; align-items:center; }
+.tree-row svg { flex:0 0 auto; width:min(42%, 230px); height:auto; }
+.legend { flex:1 1 auto; min-width:0; }
+.lg { display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.55; color:var(--t2); margin-top:10px; }
+.lg b { color:var(--t1); font-weight:600; }
+.lg .sw { width:14px; height:14px; border-radius:4px; margin-top:3px; flex:0 0 auto; }
+.lg.muted { font-size:12.5px; color:var(--t3-text); }
+/* weather */
+.weather { border:1px solid var(--bd); }
+.weather.sunny  { background:var(--g-bg); border-color:rgba(26,135,84,0.2); }
+.weather.cloudy { background:var(--a-bg); border-color:rgba(180,83,9,0.2); }
+.weather.stormy { background:var(--r-bg); border-color:rgba(192,57,43,0.2); }
+.weather .wt { font-size:15px; font-weight:700; margin-bottom:6px; }
+.weather.sunny .wt { color:var(--g-text); } .weather.cloudy .wt { color:var(--a-text); } .weather.stormy .wt { color:var(--r-text); }
+.weather p { font-size:15px; line-height:1.65; color:var(--t2); }
+/* dividends */
+.divrow { font-family:var(--mono); font-size:13px; display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--bd); }
+.divrow:last-of-type { border-bottom:none; }
+.divrow .amt { font-weight:600; color:var(--g-text); }
+.divrow.total { border-top:2px solid var(--bd2); font-weight:700; color:var(--t1); }
+.prov { font-size:11px; color:var(--a-text); font-family:var(--sans); }
+.foot { font-size:12.5px; color:var(--t3-text); margin-top:10px; }
+/* under the bonnet */
 .check { font-family:var(--mono); font-size:12px; color:var(--t2); display:grid; grid-template-columns:220px 1fr; row-gap:5px; }
 .check b { color:var(--t1); font-weight:600; }
 .note { font-size:13px; color:var(--t2); margin-top:14px; }
 @media (max-width:1200px){ .kpi-strip { grid-template-columns:repeat(3,1fr); } }
-@media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } }
+@media (max-width:900px){ .duo, .learn-grid { grid-template-columns:1fr; } .tree-row { flex-direction:column; } .tree-row svg { width:60%; max-width:230px; } }
+@media (max-width:768px){ .shell { padding:12px 16px 40px; } .kpi-strip { grid-template-columns:repeat(2,1fr); } .check { grid-template-columns:1fr; } .headline .big { font-size:34px; } }
 </style>
 </head>
 <body>
@@ -85,11 +129,37 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
     <div class="pills" id="pills"></div>
   </div>
   <div class="banner" id="prov-banner" hidden>Some of these numbers are provisional — the first trade record is a placeholder until the real date and cost are entered.</div>
+
+  <div class="card headline" id="headline"></div>
+
   <div class="kpi-strip" id="kpis"></div>
+
   <div class="card">
-    <div class="card-title">Engine check — Session 1 shell</div>
+    <div class="card-title">Your money's journey</div>
+    <div class="card-sub">The green line is what your ETF is worth. The dotted line is what you put in. The gap between them is growth.</div>
+    <div id="journey" style="height:340px"></div>
+  </div>
+
+  <div class="duo">
+    <div class="card">
+      <div class="card-title">Your supertree</div>
+      <div class="tree-row">
+        <svg id="tree" viewBox="0 0 300 340" role="img" aria-label="A supertree drawing that grows with the portfolio"></svg>
+        <div class="legend" id="tree-legend"></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card weather" id="weather"></div>
+      <div class="card" id="divcard"></div>
+    </div>
+  </div>
+
+  <div class="learn-grid" id="learn"></div>
+
+  <div class="card">
+    <div class="card-title">Under the bonnet — the exact numbers</div>
     <div class="check" id="check"></div>
-    <p class="note">The full page — your money's journey, the supertree, the learn cards — is on its way. The numbers above are live, tested and guarded.</p>
+    <p class="note">Everything above is calculated from these numbers. They are refreshed on weekday evenings, tested and guarded before anything is shown to you.</p>
   </div>
 </div>
 <script>
@@ -107,8 +177,10 @@ async function loadData(){
 }
 
 /* All figures >= 1,000 carry thousands separators (house rule). */
-const sgd = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const pct = n => (n >= 0 ? '+' : '') + (100 * n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+const sgd  = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sgd0 = n => 'S$' + Math.round(Math.abs(n)).toLocaleString('en-US');
+const signed0 = n => (n < 0 ? '-' : '+') + sgd0(n);
+const pct  = n => (n >= 0 ? '+' : '') + (100 * n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtDate(iso){
@@ -116,10 +188,48 @@ function fmtDate(iso){
   const [y, m, d] = iso.split('-').map(Number);
   return d + ' ' + MONTHS[m - 1] + ' ' + y;
 }
+function fmtMon(iso){
+  const [y, m] = iso.split('-').map(Number);
+  return MONTHS[m - 1] + ' ' + y;  // months 1-indexed in ISO, 0-indexed in the array
+}
 function daysSince(iso){
   const [y, m, d] = iso.split('-').map(Number);
   // JavaScript Date months are 0-indexed, hence m - 1; UTC avoids TZ drift
   return Math.floor((Date.now() - Date.UTC(y, m - 1, d)) / 86400000);
+}
+
+function renderPills(p, s){
+  const stale = daysSince(p.as_of) > 7;
+  const guardFail = !s.guard || s.guard.indexOf('pass') !== 0;
+  const pills = ['<span class="pill">prices to ' + fmtDate(p.as_of) + '</span>'];
+  if (guardFail)  pills.push('<span class="pill fail">refresh failing</span>');
+  else if (stale) pills.push('<span class="pill stale">data stale since ' + fmtDate(p.as_of) + '</span>');
+  else            pills.push('<span class="pill live">data fresh</span>');
+  if (p.provisional) pills.push('<span class="pill stale">provisional</span>');
+  document.getElementById('pills').innerHTML = pills.join('');
+  document.getElementById('prov-banner').hidden = !p.provisional;
+}
+
+function renderHeadline(p){
+  const m = p.money;
+  const grew = m.total_outcome >= 0;
+  let body;
+  if (grew){
+    body = 'Yes. You put in <b>' + sgd0(m.invested) + '</b> and your ETF is now worth <b>' + sgd0(p.position.value) + '</b>. ' +
+           'The companies also paid you <b>' + sgd(m.dividends_received) + '</b> in cash. ' +
+           'All together, that is <b>' + sgd0(m.total_outcome) + ' more</b> than you started with — ' +
+           '<b>' + pct(m.total_outcome_pct) + '</b> since ' + fmtDate(p.position.first_buy_date) + '.';
+  } else {
+    body = 'Not right now. You put in <b>' + sgd0(m.invested) + '</b> and everything together is worth <b>' +
+           sgd0(p.position.value + m.dividends_received) + '</b> — that is <b>' + sgd0(m.total_outcome) + ' less</b>. ' +
+           'This happens sometimes, and it is normal. The weather card below explains what to do. Mostly: wait.';
+  }
+  document.getElementById('headline').innerHTML =
+    '<div class="card-title">The big question</div>' +
+    '<h2>Is my money growing?</h2>' +
+    '<div class="big ' + (grew ? 'pos' : 'neg') + '">' + signed0(m.total_outcome) +
+    '<small>' + pct(m.total_outcome_pct) + '</small></div>' +
+    '<p>' + body + '</p>';
 }
 
 function kpi(label, val, cls, sub){
@@ -128,19 +238,7 @@ function kpi(label, val, cls, sub){
          (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
 }
 
-function render(data){
-  const p = data.portfolio, s = data.status;
-  const stale = daysSince(p.as_of) > 7;
-  const guardFail = !s.guard || s.guard.indexOf('pass') !== 0;
-  const pills = [];
-  pills.push('<span class="pill">prices to ' + fmtDate(p.as_of) + '</span>');
-  if (guardFail)  pills.push('<span class="pill fail">refresh failing</span>');
-  else if (stale) pills.push('<span class="pill stale">data stale since ' + fmtDate(p.as_of) + '</span>');
-  else            pills.push('<span class="pill live">data fresh</span>');
-  if (p.provisional) pills.push('<span class="pill stale">provisional</span>');
-  document.getElementById('pills').innerHTML = pills.join('');
-  document.getElementById('prov-banner').hidden = !p.provisional;
-
+function renderKpis(p){
   const m = p.money;
   const sign = v => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
   document.getElementById('kpis').innerHTML =
@@ -150,8 +248,195 @@ function render(data){
     kpi('Companies paid me', sgd(m.dividends_received), sign(m.dividends_received)) +
     kpi('Total growth', sgd(m.total_outcome), sign(m.total_outcome)) +
     kpi('Growth', pct(m.total_outcome_pct), sign(m.total_outcome_pct), 'since ' + fmtDate(p.position.first_buy_date));
+}
 
-  const r = p.risk, ms = p.milestones, edu = data.education;
+/* Chart defaults per design.md ("PCC DNA") */
+const CHART_LAYOUT = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: '#fafaf8',
+  font: { family: 'DM Sans', size: 11, color: '#5c5c56' },
+  margin: { t: 10, b: 34, l: 10, r: 70 },
+  xaxis: { gridcolor: '#eeeee8', linecolor: '#d5d3ca', linewidth: 1, showgrid: false,
+           tickformat: "%b '%y", dtick: 'M2', tickfont: { size: 11 } },
+  yaxis: { gridcolor: '#f0f0ea', linecolor: '#d5d3ca', linewidth: 1, showgrid: true, gridwidth: 1,
+           side: 'right', tickfont: { size: 11, family: 'JetBrains Mono' },
+           tickprefix: 'S$', tickformat: ',.0f' },
+  showlegend: true,
+  legend: { x: 0, y: 1.02, orientation: 'h', font: { size: 11 }, bgcolor: 'transparent' },
+  hovermode: 'x unified',
+  hoverlabel: { bgcolor: '#fff', bordercolor: '#d5d3ca', font: { size: 11, family: 'DM Sans' } }
+};
+
+function renderJourney(p){
+  const s = p.series;
+  const vAt = {};
+  s.dates.forEach((d, i) => vAt[d] = s.value[i]);
+  const buys = p.events.buys, divs = p.events.divs;
+  const traces = [
+    { x: s.dates, y: s.invested, name: 'Money I put in', mode: 'lines',
+      line: { color: '#c0beb5', width: 1.3, dash: 'dot', shape: 'hv' },
+      hovertemplate: 'Money I put in: S$%{y:,.0f}<extra></extra>' },
+    { x: s.dates, y: s.value, name: 'What my ETF is worth', mode: 'lines',
+      line: { color: '#1a8754', width: 3.5 },
+      hovertemplate: 'Worth: S$%{y:,.2f}<extra></extra>' },
+    { x: buys.map(b => b.date), y: buys.map(b => vAt[b.date]), name: 'I bought',
+      mode: 'markers', marker: { symbol: 'triangle-up', size: 12, color: '#1a8754',
+      line: { color: '#ffffff', width: 1.5 } },
+      customdata: buys.map(b => sgd0(b.cost)),
+      hovertemplate: 'I put in %{customdata}<extra></extra>' },
+    { x: divs.map(x => x.date), y: divs.map(x => vAt[x.date]), name: 'Companies paid me',
+      mode: 'markers', marker: { symbol: 'circle', size: 10, color: '#0891b2',
+      line: { color: '#ffffff', width: 1.5 } },
+      customdata: divs.map(x => sgd(x.amount)),
+      hovertemplate: 'Companies paid me %{customdata} in cash<extra></extra>' }
+  ];
+  const last = s.value[s.value.length - 1];
+  const layout = Object.assign({}, CHART_LAYOUT, {
+    annotations: [{ xref: 'paper', x: 1.0, yref: 'y', y: last, xanchor: 'left', xshift: 6,
+                    text: 'NOW ' + sgd0(last), showarrow: false,
+                    font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' },
+                    bgcolor: '#1a8754', borderpad: 3 }]
+  });
+  Plotly.newPlot('journey', traces, layout, { displayModeBar: false, responsive: true });
+}
+
+/* The supertree. Frame (trunk) = money planted; living canopy = growth.
+   No <text> inside the SVG — all labels live in HTML beside it, which
+   sidesteps the viewBox text-scaling trap entirely (design.md). */
+function renderTree(p){
+  const m = p.money;
+  const growth = m.total_outcome;
+  const share = growth > 0 ? Math.min(0.75, Math.max(0.06, growth / (m.invested + growth))) : 0.02;
+  const N = growth > 0 ? 7 + Math.round(share * 14) : 3;
+  const L = growth > 0 ? 55 + share * 95 : 28;
+  const cx = 150, topY = 152;
+  const el = [];
+  el.push('<ellipse cx="150" cy="322" rx="62" ry="6" fill="#eeeee8"/>');
+  // trunk: tapered frame, half-width 8 at base -> 4 at top
+  el.push('<polygon points="142,322 158,322 154,152 146,152" fill="#d5d3ca" stroke="#c0beb5" stroke-width="1.5"/>');
+  const half = y => 4 + (8 - 4) * (322 - 152 ? (y - 152) / (322 - 152) : 0);
+  for (let y = 170; y <= 300; y += 26){
+    const h1 = half(y), h2 = half(y + 18);
+    el.push('<line x1="' + (cx - h1) + '" y1="' + y + '" x2="' + (cx + h2) + '" y2="' + (y + 18) + '" stroke="#c0beb5" stroke-width="1.2" opacity="0.8"/>');
+    el.push('<line x1="' + (cx + h1) + '" y1="' + y + '" x2="' + (cx - h2) + '" y2="' + (y + 18) + '" stroke="#c0beb5" stroke-width="1.2" opacity="0.8"/>');
+  }
+  // canopy: two layers of fronds fanning up from the trunk top
+  const layers = [ { n: N, len: L, w: 3, omin: 0.55 }, { n: Math.max(4, N - 4), len: L * 0.62, w: 2.4, omin: 0.35 } ];
+  layers.forEach((ly, li) => {
+    for (let i = 0; i < ly.n; i++){
+      const t = ly.n === 1 ? 0.5 : i / (ly.n - 1);
+      const deg = -75 + 150 * t;               // fan from -75deg to +75deg off vertical
+      const rad = deg * Math.PI / 180;
+      const tx = cx + Math.sin(rad) * ly.len;
+      const ty = topY - Math.cos(rad) * ly.len;
+      const qx = cx + Math.sin(rad) * ly.len * 0.62;
+      const qy = topY - Math.cos(rad) * ly.len * 0.45;
+      const col = (i + li) % 2 ? '#22a366' : '#1a8754';
+      const op = (ly.omin + 0.35 * ((i % 3) / 2)).toFixed(2);
+      el.push('<path d="M' + cx + ',' + topY + ' Q' + qx.toFixed(1) + ',' + qy.toFixed(1) + ' ' + tx.toFixed(1) + ',' + ty.toFixed(1) + '" fill="none" stroke="' + col + '" stroke-width="' + ly.w + '" stroke-linecap="round" opacity="' + op + '"/>');
+      if (li === 0) el.push('<circle cx="' + tx.toFixed(1) + '" cy="' + ty.toFixed(1) + '" r="3" fill="#22a366" opacity="0.85"/>');
+    }
+  });
+  // badge lights — unlit until milestones ship (Session 4)
+  [-55, -28, 0, 28, 55].forEach(deg => {
+    const rad = deg * Math.PI / 180, d = Math.max(L * 0.72, 34);
+    const x = cx + Math.sin(rad) * d, y = topY - Math.cos(rad) * d;
+    el.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.5" fill="#eeeee8" stroke="#c0beb5" stroke-width="1.2"/>');
+  });
+  document.getElementById('tree').innerHTML = el.join('');
+
+  const growPos = growth >= 0;
+  document.getElementById('tree-legend').innerHTML =
+    '<div class="lg"><span class="sw" style="background:#d5d3ca;border:1px solid #c0beb5"></span>' +
+    '<span><b>The frame</b> — money you planted: <b>' + sgd0(m.invested) + '</b></span></div>' +
+    '<div class="lg"><span class="sw" style="background:#1a8754"></span>' +
+    '<span><b>The living growth</b> — ' +
+    (growPos
+      ? '<b style="color:var(--g-text)">' + signed0(growth) + '</b>. The market added ' + signed0(m.market_gain) + ' and companies paid you ' + sgd(m.dividends_received) + ' in cash.'
+      : '<b style="color:var(--r-text)">' + signed0(growth) + '</b> right now. The tree is resting; frames hold while canopies regrow.') +
+    '</span></div>' +
+    '<div class="lg muted"><span></span><span>Real supertrees in Gardens by the Bay grew over steel frames. Yours works the same way: the frame is what you planted, the green is what time added. The little bulbs are badge lights — they switch on when you reach milestones.</span></div>';
+}
+
+function renderWeather(p, edu){
+  // Bands are deliberate: the STI sits within 2% of its high much of the time,
+  // so "cloudy" is reserved for a real dip and "stormy" for one worth talking about.
+  const dd = p.risk.current_dd;
+  const state = dd > -0.02 ? 'sunny' : (dd > -0.07 ? 'cloudy' : 'stormy');
+  const r = p.risk;
+  let hist = '';
+  if (r.max_dd <= -0.02){
+    hist = 'Your money once fell <b>' + pct(r.max_dd) + '</b> (' + fmtMon(r.max_dd_peak) + ' to ' + fmtMon(r.max_dd_trough) + ')' +
+           (r.max_dd_recovered ? ' and grew all the way back by ' + fmtMon(r.max_dd_recovered) + '.' : ' and it is still climbing back.');
+  }
+  let title, body;
+  if (state === 'sunny'){
+    title = 'Today’s weather — sunny';
+    body = 'Your money is at its best level ever, or very close to it. Enjoy it — and remember it will not rise every single day. ' +
+           (hist ? hist + ' Wobbles are normal even in good times.' : '');
+  } else if (state === 'cloudy'){
+    title = 'Today’s weather — a little cloudy';
+    body = 'Your money is <b>' + pct(dd) + '</b> below its best point. Dips like this are normal. ' + hist +
+           ' Falls are part of growing. The plan: do nothing special, and wait.';
+  } else {
+    title = 'Today’s weather — stormy';
+    body = 'Your money is <b>' + pct(dd) + '</b> below its best point. That can feel bad, and it is still normal. ' + hist;
+    const ep = edu.episodes && edu.episodes[0];
+    if (ep && ep.recover_date){
+      body += ' Even the biggest fall since 2008 (<b>' + pct(ep.depth_pct) + '</b>) grew all the way back. ' +
+              'The plan on a stormy day is simple: do not sell in a panic. Wait.';
+    } else {
+      body += ' The plan on a stormy day is simple: do not sell in a panic. Wait.';
+    }
+  }
+  const w = document.getElementById('weather');
+  w.className = 'card weather ' + state;
+  w.innerHTML = '<div class="card-title">How is the weather?</div><div class="wt">' + title + '</div><p>' + body + '</p>';
+}
+
+function renderDivs(p){
+  const divs = p.events.divs;
+  let rows;
+  if (divs.length){
+    rows = divs.map(x =>
+      '<div class="divrow"><span>' + fmtDate(x.date) + (x.provisional ? ' <span class="prov">provisional</span>' : '') +
+      '</span><span class="amt">' + sgd(x.amount) + '</span></div>').join('') +
+      '<div class="divrow total"><span>Total cash so far</span><span>' + sgd(p.money.dividends_received) + '</span></div>';
+  } else {
+    rows = '<p style="font-size:15px;color:var(--t2)">None yet — ES3 usually pays about twice a year. When it happens, you will see it here.</p>';
+  }
+  document.getElementById('divcard').innerHTML =
+    '<div class="card-title">Cash the companies paid you</div>' + rows +
+    '<div class="foot">This cash is yours, on top of the green line. Companies usually pay about twice a year.</div>';
+}
+
+function renderLearn(p){
+  const m = p.money;
+  const wd = p.risk.worst_day;
+  let wiggle = 'Every day, people buy and sell at slightly different prices, so the line wiggles.';
+  if (wd && wd.end_date){
+    wiggle += ' Your worst single day so far was <b>' + pct(wd.pct) + '</b>' +
+      (m.total_outcome > 0 ? ' — and your money still grew <b>' + pct(m.total_outcome_pct) + '</b> overall.' : '.');
+  }
+  wiggle += ' Days wiggle. Years are what grow.';
+  const divLine = m.dividends_received > 0
+    ? 'You own a small slice of 30 companies, so they have paid you <b>' + sgd(m.dividends_received) + '</b> so far — cash, just for holding on.'
+    : 'You own a small slice of 30 companies, and your first payment is on its way.';
+  const cards = [
+    ['What is an ETF?',
+     'ETF is short for <b>exchange-traded fund</b> — a basket that holds many companies, bought in one go. Your basket is called <b>ES3</b>. It holds 30 of Singapore’s biggest listed companies at once, so you never depend on just one.'],
+    ['What is the STI?',
+     'The <b>Straits Times Index</b> is Singapore’s main share-market scoreboard. It follows 30 large companies — names like DBS, Singtel and Singapore Airlines. When the news says the Singapore market rose today, this is the number they mean. Your ETF simply copies it.'],
+    ['Why do prices wiggle every day?', wiggle],
+    ['What is a dividend?',
+     'When companies make a profit, they share some of it with their owners, in cash. That cash is called a <b>dividend</b>. ' + divLine]
+  ];
+  document.getElementById('learn').innerHTML = cards.map(c =>
+    '<div class="card"><h3>' + c[0] + '</h3><p>' + c[1] + '</p></div>').join('');
+}
+
+function renderCheck(p, edu, s){
+  const r = p.risk, ms = p.milestones;
   const rows = [
     ['as of', p.as_of],
     ['units x last close', p.position.units.toLocaleString('en-US') + ' x ' + p.position.last_close + ' = ' + sgd(p.position.value)],
@@ -164,12 +449,25 @@ function render(data){
     ['milestone: first dividend', ms.first_dividend.achieved ? fmtDate(ms.first_dividend.date) + (ms.first_dividend.provisional ? ' (provisional)' : '') : 'not yet'],
     ['milestone: +10% growth', ms.growth_10pct.achieved ? fmtDate(ms.growth_10pct.date) : 'not yet'],
     ['milestone: 5% fall survived', ms.dd5_survived.achieved ? 'yes — recovered ' + fmtDate(ms.dd5_survived.recovered_date) : (ms.dd5_experienced.achieved ? 'in one now' : 'not yet')],
-    ['ETF history on record', fmtDate(edu.history_start) + ' to ' + fmtDate(edu.history_end) + ' (Yahoo depth; label everything "since 2008")'],
+    ['ETF history on record', fmtDate(edu.history_start) + ' to ' + fmtDate(edu.history_end) + ' (Yahoo depth; everything is labelled “since 2008”)'],
     ['deepest fall on record', edu.episodes.length ? pct(edu.episodes[0].depth_pct) + ' (peak ' + fmtDate(edu.episodes[0].peak_date) + ')' : 'none >= 20%'],
     ['refresh guard', s.guard]
   ];
   document.getElementById('check').innerHTML =
     rows.map(x => '<span>' + x[0] + '</span><b>' + x[1] + '</b>').join('');
+}
+
+function render(data){
+  const p = data.portfolio, edu = data.education, s = data.status;
+  renderPills(p, s);
+  renderHeadline(p);
+  renderKpis(p);
+  renderJourney(p);
+  renderTree(p);
+  renderWeather(p, edu);
+  renderDivs(p);
+  renderLearn(p);
+  renderCheck(p, edu, s);
 }
 
 loadData().then(render).catch(err => {

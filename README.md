@@ -2,7 +2,7 @@
 
 Personal family portfolio tracker and plain-language investing teacher. Layered dashboard: a simple front page ("Phua JR") answering *is my money growing and why*, and depth tabs with total-return, drawdown and trend context. The visual system is a supertree that grows with the portfolio — the frame is money put in, the living growth is what market and dividends added.
 
-**Status:** Session 1 — engine, ledger, pipeline, guard. Page shell only; full front page and depth tabs follow.
+**Status:** Session 2 — front page live in template: headline answer, money-journey chart (Plotly, house layout), supertree SVG with growth-proportional canopy and unlit badge bulbs, weather reframe (sunny/cloudy/stormy off live drawdown, bands −2%/−7%), dividends card, four learn cards, under-the-bonnet check. Depth tabs (Session 3) and forward view + badge lights + Pages enablement (Session 4) remain.
 
 ## Architecture
 
