@@ -114,8 +114,9 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .prov { font-size:11px; color:var(--a-text); font-family:var(--sans); }
 .foot { font-size:12.5px; color:var(--t3-text); margin-top:10px; }
 /* under the bonnet */
-.check { font-family:var(--mono); font-size:12px; color:var(--t2); display:grid; grid-template-columns:220px 1fr; row-gap:5px; }
-.check b { color:var(--t1); font-weight:600; }
+.check { font-family:var(--sans); font-size:13px; color:var(--t2); display:grid; grid-template-columns:210px 1fr; column-gap:20px; row-gap:9px; line-height:1.55; }
+.check span { color:var(--t3-text); }  /* prose labels in sans, muted but legible at 13px */
+.check b { font-family:var(--mono); color:var(--t1); font-weight:600; }  /* numerals stay monospaced */
 .note { font-size:13px; color:var(--t2); margin-top:14px; }
 /* ---- look-closer tab shell ---- */
 .tabs { display:flex; gap:2px; margin-top:20px; border-bottom:1px solid var(--bd); }
@@ -611,8 +612,14 @@ function renderLearn(p){
 
 function renderCheck(p, edu, s){
   const r = p.risk, ms = p.milestones;
+  const nb = p.events.buys.length;
+  const buyRows = p.events.buys.map((b, i) => [
+    'money put in' + (nb > 1 ? ' (' + (i + 1) + ' of ' + nb + ')' : ''),
+    fmtDate(b.date) + ' — ' + b.units.toLocaleString('en-US') + ' units = ' + sgd(b.cost) + (b.provisional ? ' (provisional)' : '')
+  ]);
   const rows = [
     ['as of', p.as_of],
+    ...buyRows,
     ['units x last close', p.position.units.toLocaleString('en-US') + ' x ' + p.position.last_close + ' = ' + sgd(p.position.value)],
     ['money-weighted return', p.mwr_annualised == null ? 'n/a' : pct(p.mwr_annualised) + ' annualised'],
     ['biggest fall (my money)', pct(r.max_dd) + ' (' + fmtDate(r.max_dd_peak) + ' to ' + fmtDate(r.max_dd_trough) + (r.max_dd_recovered ? ', recovered ' + fmtDate(r.max_dd_recovered) : ', not yet recovered') + ')'],
