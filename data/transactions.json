@@ -27,9 +27,9 @@
       "ticker": "ES3.SI",
       "units": 200,
       "dps": 0.091,
-      "amount": null,
-      "provisional": true,
-      "note": "Drafted from Yahoo ex-date. Only 200 units held pre-ex (the 2024-11-28 + 2025-01-24 buys; the 200-unit 2025-03-13 buy came after). Confirm actual cash credited and set amount + provisional:false."
+      "amount": 18.20,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). Only 200 units held pre-ex (the 2024-11-28 + 2025-01-24 buys; the 200-unit 2025-03-13 buy came after). No broker statement available; amount = ex-date dps 0.091 x 200 units, treated as final."
     },
     {
       "date": "2025-03-13",
@@ -47,9 +47,9 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.089,
-      "amount": null,
-      "provisional": true,
-      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+      "amount": 35.60,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.089 x 400 units, treated as final."
     },
     {
       "date": "2026-02-11",
@@ -57,9 +57,9 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.085,
-      "amount": null,
-      "provisional": true,
-      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+      "amount": 34.00,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.085 x 400 units, treated as final."
     }
   ]
 }
