@@ -302,6 +302,7 @@ async function loadData(){
 
 /* All figures >= 1,000 carry thousands separators (house rule). */
 const sgd  = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sgdp = n => 'S$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });  // per-unit price: keep up to 4 dp
 const sgd0 = n => 'S$' + Math.round(Math.abs(n)).toLocaleString('en-US');
 const signed0 = n => (n < 0 ? '-' : '+') + sgd0(n);
 const pct  = n => (n >= 0 ? '+' : '') + (100 * n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
@@ -613,10 +614,14 @@ function renderLearn(p){
 function renderCheck(p, edu, s){
   const r = p.risk, ms = p.milestones;
   const nb = p.events.buys.length;
-  const buyRows = p.events.buys.map((b, i) => [
-    'money put in' + (nb > 1 ? ' (' + (i + 1) + ' of ' + nb + ')' : ''),
-    fmtDate(b.date) + ' — ' + b.units.toLocaleString('en-US') + ' units = ' + sgd(b.cost) + (b.provisional ? ' (provisional)' : '')
-  ]);
+  const buyRows = p.events.buys.map((b, i) => {
+    const fee = Math.round((b.cost - b.units * b.price) * 100) / 100;  // cost includes fees; recover the fee
+    return [
+      'money put in' + (nb > 1 ? ' (' + (i + 1) + ' of ' + nb + ')' : ''),
+      fmtDate(b.date) + ' — ' + b.units.toLocaleString('en-US') + ' × ' + sgdp(b.price) +
+        (fee ? ' + ' + sgd(fee) + ' fee' : '') + ' = ' + sgd(b.cost) + (b.provisional ? ' (provisional)' : '')
+    ];
+  });
   const rows = [
     ['as of', p.as_of],
     ...buyRows,
