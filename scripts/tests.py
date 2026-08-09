@@ -356,7 +356,8 @@ def test_real_data_smoke():
     check("real: value = units x last close",
           abs(p["position"]["value"] -
               p["position"]["units"] * p["position"]["last_close"]) < 1e-6)
-    check("real: provisional propagates (all rows drafted)", p["provisional"] is True)
+    expected_prov = any(bool(t.get("provisional")) for t in ledger)
+    check("real: provisional flag matches ledger rows", p["provisional"] is expected_prov)
     check("real: education history starts 2008 (Yahoo depth)",
           edu["history_start"].startswith("2008"))
     tr = p["trend"]

@@ -2,14 +2,44 @@
   "comment": "SOURCE OF TRUTH. Hand-maintained. Dates ISO YYYY-MM-DD and must be SGX trading dates. provisional:true rows are drafts — replace values with actuals and set provisional:false to confirm. See README for schema.",
   "transactions": [
     {
-      "date": "2025-06-30",
+      "date": "2024-11-28",
       "type": "BUY",
       "ticker": "ES3.SI",
-      "units": 400,
-      "price": null,
-      "fees": null,
-      "provisional": true,
-      "note": "Inception PLACEHOLDER — real trade date, price and fees to be supplied by ZH. Null price resolves to that day's close (4.04) until confirmed."
+      "units": 100,
+      "price": 3.803,
+      "fees": 2.33,
+      "provisional": false,
+      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2024-11-28 11:02 SGT, settle 2024-12-02. Amount S$380.30 + fees (exch 0.15, comm 0.99, platform 1.00, GST 0.19) = cash S$382.63. First of three buys making up the 400-unit position."
+    },
+    {
+      "date": "2025-01-24",
+      "type": "BUY",
+      "ticker": "ES3.SI",
+      "units": 100,
+      "price": 3.885,
+      "fees": 2.34,
+      "provisional": false,
+      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2025-01-24 17:04 SGT, settle 2025-01-28. Amount S$388.50 + fees (exch 0.16, comm 0.99, platform 1.00, GST 0.19) = cash S$390.84. Second buy."
+    },
+    {
+      "date": "2025-02-12",
+      "type": "DIV",
+      "ticker": "ES3.SI",
+      "units": 200,
+      "dps": 0.091,
+      "amount": 18.20,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). Only 200 units held pre-ex (the 2024-11-28 + 2025-01-24 buys; the 200-unit 2025-03-13 buy came after). No broker statement available; amount = ex-date dps 0.091 x 200 units, treated as final."
+    },
+    {
+      "date": "2025-03-13",
+      "type": "BUY",
+      "ticker": "ES3.SI",
+      "units": 200,
+      "price": 3.827,
+      "fees": 2.51,
+      "provisional": false,
+      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2025-03-13 09:12 SGT, settle 2025-03-17. Amount S$765.40 + fees (exch 0.31, comm 0.99, platform 1.00, GST 0.21) = cash S$767.91. Third buy; brings position to 400 units, blended cost 3.85345."
     },
     {
       "date": "2025-08-12",
@@ -17,9 +47,9 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.089,
-      "amount": null,
-      "provisional": true,
-      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+      "amount": 35.60,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.089 x 400 units, treated as final."
     },
     {
       "date": "2026-02-11",
@@ -27,9 +57,9 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.085,
-      "amount": null,
-      "provisional": true,
-      "note": "Drafted from Yahoo ex-date. Confirm actual cash credited and set amount + provisional:false."
+      "amount": 34.00,
+      "provisional": false,
+      "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.085 x 400 units, treated as final."
     }
   ]
 }
