@@ -38,6 +38,14 @@ def validate_price_rows(rows):
     return errs
 
 
+def is_phantom_row(row, prev_row):
+    """True for a non-trading placeholder: O=H=L=C, equal to the previous close."""
+    if prev_row is None:
+        return False
+    _, o, h, low, c, _ = row
+    return o == h == low == c and c == prev_row[4]
+
+
 def validate_replacement(new_rows, old_rows):
     """Refuse to replace a longer or fresher history with a shorter or staler one,
     and refuse silent restatements of RAW close on recent shared dates. Adjusted
@@ -49,8 +57,25 @@ def validate_replacement(new_rows, old_rows):
     errs = []
     if not old_rows:
         return errs
-    if len(new_rows) < len(old_rows):
-        errs.append(f"new frame has {len(new_rows)} rows < existing {len(old_rows)}")
+    # A date may leave the history only if the old row was a phantom holiday
+    # print: flat bar (O=H=L=C) equal to the previous close. Yahoo carried such
+    # rows on SGX holidays and later removed them (2026-10-09). Any other
+    # missing date is lost history and fails.
+    new_dates = {r[0] for r in new_rows}
+    phantoms, lost = 0, []
+    for i, r in enumerate(old_rows):
+        if r[0] in new_dates:
+            continue
+        if is_phantom_row(r, old_rows[i - 1] if i else None):
+            phantoms += 1
+        else:
+            lost.append(r[0])
+    if lost:
+        errs.append(f"{len(lost)} existing dates missing from new frame "
+                    f"(first {lost[0]}, last {lost[-1]})")
+    if len(new_rows) < len(old_rows) - phantoms:
+        errs.append(f"new frame has {len(new_rows)} rows < existing {len(old_rows)} "
+                    f"less {phantoms} phantom holiday rows")
     if new_rows and old_rows and new_rows[-1][0] < old_rows[-1][0]:
         errs.append(f"new last date {new_rows[-1][0]} earlier than existing {old_rows[-1][0]}")
     old_close = {r[0]: r[4] for r in old_rows}

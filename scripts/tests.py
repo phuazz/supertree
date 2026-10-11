@@ -110,6 +110,20 @@ def test_guard_replacement():
           guard.validate_replacement(adj_moved, old) == [])
     check("guard: no old data passes trivially",
           guard.validate_replacement(fresh, []) == [])
+    # Phantom holiday row: flat bar equal to the previous close, later removed upstream
+    with_phantom = mkrows([("2026-04-30", 4.0), ("2026-05-01", 4.0), ("2026-05-04", 4.1)])
+    with_phantom[1][1:5] = [4.0, 4.0, 4.0, 4.0]
+    cleaned = mkrows([("2026-04-30", 4.0), ("2026-05-04", 4.1), ("2026-05-05", 4.2)])
+    check("guard: dropped phantom holiday row passes",
+          guard.validate_replacement(cleaned, with_phantom) == [])
+    real_lost = mkrows([("2026-04-30", 4.0), ("2026-05-04", 4.1), ("2026-05-05", 4.2)])
+    old_real = mkrows([("2026-04-30", 4.0), ("2026-05-01", 4.05), ("2026-05-04", 4.1)])
+    check("guard: dropped real trading row fails even when new frame is as long",
+          guard.validate_replacement(real_lost, old_real) != [])
+    flat_moved = [r[:] for r in with_phantom]
+    flat_moved[1][1:5] = [4.02, 4.02, 4.02, 4.02]  # flat but not at previous close
+    check("guard: dropped flat row off previous close fails",
+          guard.validate_replacement(cleaned, flat_moved) != [])
 
 
 def test_guard_ledger():
