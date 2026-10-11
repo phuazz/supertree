@@ -196,8 +196,13 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
   <div class="kpi-strip" id="kpis"></div>
 
   <div class="card">
-    <div class="card-title">Your money's journey</div>
-    <div class="card-sub">The green line is what your ETF is worth. The dotted line is what you put in. The gap between them is growth.</div>
+    <div class="chart-head">
+      <div>
+        <div class="card-title">Your money's journey</div>
+        <div class="card-sub">The green line is what your ETF is worth. The dotted line is what you put in. The gap between them is growth.</div>
+      </div>
+      <div class="seg" id="jr-seg" role="group" aria-label="Journey period"></div>
+    </div>
     <div id="journey" style="height:340px"></div>
   </div>
 
@@ -326,6 +331,11 @@ function fmtMon(iso){
   const [y, m] = iso.split('-').map(Number);
   return MONTHS[m - 1] + ' ' + y;  // months 1-indexed in ISO, 0-indexed in the array
 }
+function daysBetween(a, b){
+  const [ay, am, ad] = a.split('-').map(Number), [by, bm, bd] = b.split('-').map(Number);
+  // JavaScript Date months are 0-indexed, hence m - 1; UTC avoids DST drift
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
 function daysSince(iso){
   const [y, m, d] = iso.split('-').map(Number);
   // JavaScript Date months are 0-indexed, hence m - 1; UTC avoids TZ drift
@@ -401,11 +411,34 @@ const CHART_LAYOUT = {
   hoverlabel: { bgcolor: '#fff', bordercolor: '#d5d3ca', font: { size: 11, family: 'DM Sans' } }
 };
 
+let journeyKey = 'MAX';
 function renderJourney(p){
-  const s = p.series;
+  const seg = document.getElementById('jr-seg');
+  seg.innerHTML = WINDOWS.map(w =>
+    '<button data-w="' + w + '"' + (w === journeyKey ? ' class="active"' : '') + '>' + w + '</button>').join('');
+  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    journeyKey = b.dataset.w;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+    drawJourney(p, journeyKey);
+  }));
+  drawJourney(p, journeyKey);
+}
+
+function drawJourney(p, key){
+  const all = p.series;
+  const cut = windowCutoff(all.dates, key);
+  let i0 = all.dates.findIndex(d => d >= cut);
+  if (i0 < 0) i0 = 0;
+  const s = { dates: all.dates.slice(i0), value: all.value.slice(i0), invested: all.invested.slice(i0) };
   const vAt = {};
   s.dates.forEach((d, i) => vAt[d] = s.value[i]);
-  const buys = p.events.buys, divs = p.events.divs;
+  const buys = p.events.buys.filter(b => b.date >= s.dates[0]);
+  const divs = p.events.divs.filter(x => x.date >= s.dates[0]);
+  // Tick spacing follows the window span so short windows do not collapse to one label
+  const spanDays = daysBetween(s.dates[0], s.dates[s.dates.length - 1]);
+  const xaxis = spanDays > 300 ? Object.assign({}, CHART_LAYOUT.xaxis)
+              : spanDays > 120 ? Object.assign({}, CHART_LAYOUT.xaxis, { dtick: 'M1' })
+              : Object.assign({}, CHART_LAYOUT.xaxis, { dtick: null, tickformat: '%d %b' });
   const traces = [
     { x: s.dates, y: s.invested, name: 'Money I put in', mode: 'lines',
       line: { color: '#c0beb5', width: 1.3, dash: 'dot', shape: 'hv' },
@@ -425,13 +458,19 @@ function renderJourney(p){
       hovertemplate: 'Companies paid me %{customdata} in cash<extra></extra>' }
   ];
   const last = s.value[s.value.length - 1];
+  // Legend sits above the plot area, not over it: on short windows the value line
+  // runs along the top. It wraps to two rows on a phone, hence the taller margin.
+  const narrow = document.getElementById('journey').clientWidth < 560;
   const layout = Object.assign({}, CHART_LAYOUT, {
+    xaxis: xaxis,
+    margin: Object.assign({}, CHART_LAYOUT.margin, { t: narrow ? 48 : 28 }),
+    legend: Object.assign({}, CHART_LAYOUT.legend, { y: 1, yanchor: 'bottom' }),
     annotations: [{ xref: 'paper', x: 1.0, yref: 'y', y: last, xanchor: 'left', xshift: 6,
                     text: 'NOW ' + sgd0(last), showarrow: false,
                     font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' },
                     bgcolor: '#1a8754', borderpad: 3 }]
   });
-  Plotly.newPlot('journey', traces, layout, { displayModeBar: false, responsive: true });
+  Plotly.react('journey', traces, layout, { displayModeBar: false, responsive: true });
 }
 
 /* The supertree. Frame (trunk) = money planted; living canopy = growth.
@@ -669,16 +708,19 @@ function yPct(fmt){ return { gridcolor:'#f0f0ea', linecolor:'#d5d3ca', linewidth
   tickprefix:'', ticksuffix:'%', tickformat: fmt || '+,.0f' }; }
 
 /* (a) total return %, rebased to 0% at the window start. Custom pill row. */
-const RETURN_WINDOWS = ['1M', '3M', '6M', 'YTD', 'MAX'];
+const WINDOWS = ['1M', '3M', '6M', 'YTD', '1Y', 'MAX'];  // shared by journey and total-return
 let returnKey = 'MAX';
 function windowCutoff(dates, key){
   const last = dates[dates.length - 1];
   const [ly, lm, ld] = last.split('-').map(Number);  // ISO months 1-indexed
   if (key === 'MAX') return dates[0];
   if (key === 'YTD') return ly + '-01-01';
-  const back = { '1M': 1, '3M': 3, '6M': 6 }[key];
-  const dt = new Date(Date.UTC(ly, lm - 1, ld));      // JS Date months 0-indexed
-  dt.setUTCMonth(dt.getUTCMonth() - back);
+  const back = { '1M': 1, '3M': 3, '6M': 6, '1Y': 12 }[key];
+  // JS Date months 0-indexed. Clamp the day to the target month's length so
+  // 31 Mar less 1M is 28/29 Feb, not an overflow into 3 Mar.
+  const tm = lm - 1 - back;
+  const lastDay = new Date(Date.UTC(ly, tm + 1, 0)).getUTCDate();
+  const dt = new Date(Date.UTC(ly, tm, Math.min(ld, lastDay)));
   return dt.toISOString().slice(0, 10);
 }
 function drawReturn(p, key){
@@ -825,7 +867,7 @@ let closerRendered = false;
 function renderCloser(data){
   const p = data.portfolio, edu = data.education;
   const seg = document.getElementById('tr-seg');
-  seg.innerHTML = RETURN_WINDOWS.map(w =>
+  seg.innerHTML = WINDOWS.map(w =>
     '<button data-w="' + w + '"' + (w === returnKey ? ' class="active"' : '') + '>' + w + '</button>').join('');
   seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
     returnKey = b.dataset.w;
