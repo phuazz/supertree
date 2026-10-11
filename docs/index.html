@@ -52,6 +52,7 @@
   --radius-lg: 12px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }  /* stop iOS inflating text in landscape */
 body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-height:1.5; }
 .shell { max-width:1180px; margin:0 auto; padding:20px 32px 60px; }
 .masthead { padding:28px 0 22px; border-bottom:2px solid var(--t1); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; }
@@ -205,6 +206,7 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
       <div class="seg" id="jr-seg" role="group" aria-label="Journey period"></div>
     </div>
     <div id="journey" style="height:340px"></div>
+    <p class="note" id="jr-note" hidden></p>
   </div>
 
   <div class="duo">
@@ -399,7 +401,7 @@ function renderKpis(p){
 const CHART_LAYOUT = {
   paper_bgcolor: 'transparent',
   plot_bgcolor: '#fafaf8',
-  font: { family: 'DM Sans', size: 11, color: '#5c5c56' },
+  font: { family: 'DM Sans', size: 11, color: '#4a4a44' },
   margin: { t: 10, b: 34, l: 10, r: 92 },  // room for the NOW pill in the right gutter
   xaxis: { gridcolor: '#eeeee8', linecolor: '#d5d3ca', linewidth: 1, showgrid: false,
            tickformat: "%b '%y", dtick: 'M2', tickfont: { size: 11 } },
@@ -407,7 +409,7 @@ const CHART_LAYOUT = {
            side: 'right', tickfont: { size: 11, family: 'JetBrains Mono' },
            tickprefix: 'S$', tickformat: ',.0f' },
   showlegend: true,
-  legend: { x: 0, y: 1.02, orientation: 'h', font: { size: 11 }, bgcolor: 'transparent' },
+  legend: { x: 0, y: 1.02, orientation: 'h', font: { size: 11, color: '#2b2b28' }, bgcolor: 'transparent' },
   hovermode: 'x unified',
   hoverlabel: { bgcolor: '#fff', bordercolor: '#d5d3ca', font: { size: 11, family: 'DM Sans' } }
 };
@@ -459,17 +461,37 @@ function drawJourney(p, key){
       hovertemplate: 'Companies paid me %{customdata} in cash<extra></extra>' }
   ];
   const last = s.value[s.value.length - 1];
+  // Y-range fits the window. The money-put-in line stays in view only while it
+  // costs at most a doubling of the value line's own span; on short windows it
+  // would flatten the line into a sliver, so it drops out with a note instead.
+  const vMin = Math.min.apply(null, s.value), vMax = Math.max.apply(null, s.value);
+  const iMin = Math.min.apply(null, s.invested);
+  const span = Math.max(vMax - vMin, vMax * 0.01);
+  const showInvested = vMin - iMin <= span;
+  const lo = showInvested ? Math.min(vMin, iMin) : vMin, hi = vMax;
+  const pad = (hi - lo) * 0.08 || hi * 0.01;
+  const range = [lo - pad, hi + pad];
+  traces[0].visible = showInvested ? true : 'legendonly';
+  // NOW pill sits inside the plot at the line's end, clear of the y tick labels
+  const upper = last > (range[0] + range[1]) / 2;
   // Legend sits above the plot area, not over it: on short windows the value line
   // runs along the top. It wraps to two rows on a phone, hence the taller margin.
   const narrow = document.getElementById('journey').clientWidth < 560;
+  const anns = [{ xref: 'paper', x: 1.0, yref: 'y', y: last, xanchor: 'right', xshift: -6,
+                  yshift: upper ? -16 : 16,
+                  text: 'NOW ' + sgd0(last), showarrow: false,
+                  font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' },
+                  bgcolor: '#1a8754', borderpad: 3 }];
+  const note = document.getElementById('jr-note');
+  note.hidden = showInvested;
+  note.textContent = showInvested ? '' : 'Zoomed in. The money you put in (' +
+    sgd0(s.invested[s.invested.length - 1]) + ') is below this view. Tap MAX to see it.';
   const layout = Object.assign({}, CHART_LAYOUT, {
     xaxis: xaxis,
-    margin: Object.assign({}, CHART_LAYOUT.margin, { t: narrow ? 48 : 28 }),
+    yaxis: Object.assign({}, CHART_LAYOUT.yaxis, { range: range, autorange: false }),
+    margin: Object.assign({}, CHART_LAYOUT.margin, { t: narrow ? 48 : 28, r: 62 }),
     legend: Object.assign({}, CHART_LAYOUT.legend, { y: 1, yanchor: 'bottom' }),
-    annotations: [{ xref: 'paper', x: 1.0, yref: 'y', y: last, xanchor: 'left', xshift: 6,
-                    text: 'NOW ' + sgd0(last), showarrow: false,
-                    font: { color: '#ffffff', size: 11, family: 'JetBrains Mono' },
-                    bgcolor: '#1a8754', borderpad: 3 }]
+    annotations: anns
   });
   Plotly.react('journey', traces, layout, { displayModeBar: false, responsive: true });
 }
@@ -689,13 +711,13 @@ function renderCheck(p, edu, s){
 function houseLayout(over){
   const L = {
     paper_bgcolor: 'transparent', plot_bgcolor: '#fafaf8',
-    font: { family: 'DM Sans', size: 11, color: '#5c5c56' },
+    font: { family: 'DM Sans', size: 11, color: '#4a4a44' },
     margin: { t: 10, b: 34, l: 10, r: 62 },
     xaxis: { gridcolor: '#eeeee8', linecolor: '#d5d3ca', linewidth: 1, showgrid: false,
              tickformat: "%b '%y", tickfont: { size: 11 } },
     yaxis: ySgd('.2f'),
     showlegend: true,
-    legend: { x: 0, y: 1.06, orientation: 'h', font: { size: 11 }, bgcolor: 'transparent' },
+    legend: { x: 0, y: 1.06, orientation: 'h', font: { size: 11, color: '#2b2b28' }, bgcolor: 'transparent' },
     hovermode: 'x unified',
     hoverlabel: { bgcolor: '#fff', bordercolor: '#d5d3ca', font: { size: 11, family: 'DM Sans' } }
   };
@@ -853,7 +875,7 @@ function renderHistory(edu){
     const tp = troughPoint(m, e);
     if (tp) anns.push({ x: tp[0], y: tp[1], ax: 0, ay: 30, showarrow: true, arrowhead: 0,
       text: pct(e.depth_pct) + (e.recover_date ? '<br>back ' + fmtMon(e.recover_date) : '<br>not yet back'),
-      align: 'center', font: { size: 10, family: 'JetBrains Mono', color: '#a93226' },
+      align: 'center', font: { size: 11, family: 'JetBrains Mono', color: '#a93226' },
       bgcolor: '#fff', bordercolor: '#d5d3ca', borderpad: 2 });
   });
   Plotly.react('c-history', trace, houseLayout({ showlegend: false, yaxis: ySgd('.1f'),
