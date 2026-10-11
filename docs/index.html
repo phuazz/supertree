@@ -143,7 +143,8 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .tiles .kpi { background:var(--bg2); }
 .tiles .kpi-val { font-size:20px; }  /* 20px bold is large text — base --g/--r allowed */
 /* holdings table */
-.htable { width:100%; border-collapse:collapse; font-size:13px; }
+.tscroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }  /* seven columns exceed a 390px phone */
+.htable { width:100%; border-collapse:collapse; font-size:13px; white-space:nowrap; }
 .htable th { text-align:right; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--t3-text); padding:9px 10px; border-bottom:1px solid var(--bd2); background:var(--bg3); }
 .htable th:first-child, .htable td:first-child { text-align:left; }
 .htable td { text-align:right; padding:11px 10px; border-bottom:1px solid var(--bd); font-family:var(--mono); color:var(--t2); }
@@ -233,8 +234,8 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
     <div class="card">
       <div class="chart-head">
         <div>
-          <div class="card-title">Total return over time</div>
-          <div class="card-sub">Growth of everything you own — ETF value plus dividend cash — rebased to 0% at the start of the window you pick.</div>
+          <div class="card-title">Growth on the money you put in</div>
+          <div class="card-sub">Each day: what you own (ETF value plus dividend cash) compared with the money you had put in by then. Above the dotted line means you are ahead.</div>
         </div>
         <div class="seg" id="tr-seg" role="group" aria-label="Return period"></div>
       </div>
@@ -707,7 +708,7 @@ function yPct(fmt){ return { gridcolor:'#f0f0ea', linecolor:'#d5d3ca', linewidth
   gridwidth:1, side:'right', zeroline:false, tickfont:{ size:11, family:'JetBrains Mono' },
   tickprefix:'', ticksuffix:'%', tickformat: fmt || '+,.0f' }; }
 
-/* (a) total return %, rebased to 0% at the window start. Custom pill row. */
+/* (a) gain over money put in, %. Custom pill row; windows zoom, never rebase. */
 const WINDOWS = ['1M', '3M', '6M', 'YTD', '1Y', 'MAX'];  // shared by journey and total-return
 let returnKey = 'MAX';
 function windowCutoff(dates, key){
@@ -729,18 +730,15 @@ function drawReturn(p, key){
   let i0 = s.dates.findIndex(d => d >= cut);
   if (i0 < 0) i0 = 0;
   const wd = s.dates.slice(i0);
-  const base = s.outcome[i0];
-  const wy = s.outcome.slice(i0).map(v => (v / base - 1) * 100);
-  // GUARD: window must re-anchor to exactly 0% at its first date (design.md)
-  if (Math.abs(wy[0]) > 1e-9)
-    console.error('rebase off-by-one: ' + key + ' starts at ' + wy[0] + '%, expected 0');
-  // GUARD: MAX endpoint must reconcile with the engine's headline total-return
-  if (key === 'MAX'){
-    const endPct = wy[wy.length - 1] / 100;
-    if (Math.abs(endPct - p.money.total_outcome_pct) > 5e-4)
-      console.error('MAX total-return ' + endPct + ' != money.total_outcome_pct ' + p.money.total_outcome_pct);
-  }
-  const trace = [{ x: wd, y: wy, mode: 'lines', name: 'Total return',
+  // Gain over money put in, each day: (ETF value + dividend cash) / invested - 1.
+  // Not rebased per window: rebasing a series that receives deposits counts the
+  // deposits as return (MAX showed +501% against a true +48%). Windows zoom only.
+  const wy = s.outcome.slice(i0).map((v, k) => (v / s.invested[i0 + k] - 1) * 100);
+  // GUARD: every window ends on the engine's headline figure
+  const endPct = wy[wy.length - 1] / 100;
+  if (Math.abs(endPct - p.money.total_outcome_pct) > 5e-4)
+    console.error(key + ' gain-over-invested ' + endPct + ' != money.total_outcome_pct ' + p.money.total_outcome_pct);
+  const trace = [{ x: wd, y: wy, mode: 'lines', name: 'Gain on money put in',
     line: { color: '#1a8754', width: 3.5 }, fill: 'tozeroy', fillcolor: 'rgba(26,135,84,0.06)',
     hovertemplate: '%{x|%d %b %Y}<br>%{y:+.1f}%<extra></extra>' }];
   const layout = houseLayout({ showlegend: false, yaxis: yPct('+,.0f'),
@@ -813,7 +811,7 @@ function renderHoldings(p){
   const holdings = [{ name: p.ticker, units: p.position.units, cost: cost,
     avg: cost / p.position.units, provisional: prov,
     last: p.position.last_close, value: p.position.value }];
-  const head = '<table class="htable"><thead><tr>' +
+  const head = '<div class="tscroll"><table class="htable"><thead><tr>' +
     ['Holding', 'Units', 'Avg cost', 'Cost', 'Last', 'Value', 'Return'].map(h => '<th>' + h + '</th>').join('') +
     '</tr></thead><tbody>';
   const body = holdings.map(h => {
@@ -829,7 +827,7 @@ function renderHoldings(p){
       '<td class="' + cls + '">' + pct(ret) + '</td>' +
     '</tr>';
   }).join('');
-  document.getElementById('cl-holdings').innerHTML = head + body + '</tbody></table>' +
+  document.getElementById('cl-holdings').innerHTML = head + body + '</tbody></table></div>' +
     '<p class="tbl-note">Return here is price only — value against cost. Dividends of <b>' + sgd(p.money.dividends_received) +
     '</b> are on top of this; the total-return chart above includes them.</p>';
 }
