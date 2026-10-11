@@ -29,3 +29,10 @@ jobs:
           git add data docs
           git diff --cached --quiet || git commit -m "Data refresh (guarded)"
           git push
+      # A guard failure keeps last-good data and still commits status.json, so
+      # without this step the run is green and the commit heartbeat stays fresh
+      # (2026-10-06 to 10-09 went unseen that way). Fail the job AFTER the commit
+      # so the page's "refresh failing" badge still ships.
+      - name: guard verdict
+        run: |
+          python -c "import json,sys; g=json.load(open('data/status.json'))['guard']; print('guard:', g); sys.exit(0 if g == 'pass' else 1)"
