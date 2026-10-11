@@ -352,6 +352,42 @@ def test_trend_window_slice():
 
 
 # ------------------------------------------------------------ real data ----
+def test_price_patches():
+    import patches
+    yahoo = [["2025-10-23", 4.465, 4.478, 4.445, 4.466, 4.3208],
+             ["2025-10-27", 4.49, 4.515, 4.49, 4.501, 4.3547]]
+    p = {"date": "2025-10-24", "open": 4.47, "high": 4.5, "low": 4.47, "close": 4.48,
+         "source": "SGX test"}
+    out, errs, _ = patches.apply_patches(yahoo, [p])
+    check("patch: inserted between neighbours, sorted",
+          [r[0] for r in out] == ["2025-10-23", "2025-10-24", "2025-10-27"] and errs == [])
+    check("patch: adjclose uses the next Yahoo row's factor",
+          out[1][5] == round(4.48 * 4.3547 / 4.501, 4))
+    check("patch: merged frame passes the price guard", guard.validate_price_rows(out) == [])
+    same = yahoo[:1] + [["2025-10-24", 4.47, 4.5, 4.47, 4.481, 4.33]] + yahoo[1:]
+    out2, errs2, notes2 = patches.apply_patches(same, [p])
+    check("patch: Yahoo supplies the date and agrees -> Yahoo kept, no error",
+          errs2 == [] and out2[1][4] == 4.481 and "redundant" in notes2[0])
+    clash = yahoo[:1] + [["2025-10-24", 4.6, 4.7, 4.6, 4.65, 4.5]] + yahoo[1:]
+    check("patch: Yahoo disagrees beyond tolerance -> error",
+          patches.apply_patches(clash, [p])[1] != [])
+    check("patch: distribution between patch and reference row -> error",
+          patches.apply_patches(yahoo, [p], [{"exdate": "2025-10-27", "dps": 0.1}])[1] != [])
+    check("patch: missing source -> error",
+          patches.apply_patches(yahoo, [dict(p, source="")])[1] != [])
+    check("patch: high below close -> error",
+          patches.apply_patches(yahoo, [dict(p, high=4.475)])[1] != [])
+    # weekday rule at month and year boundaries (verified with datetime)
+    check("patch date: Fri 2025-10-31 (month end) accepted",
+          patches.validate_patch(dict(p, date="2025-10-31")) == [])
+    check("patch date: Sat 2025-11-01 (month start) rejected",
+          patches.validate_patch(dict(p, date="2025-11-01")) != [])
+    check("patch date: Wed 2025-12-31 (year end) accepted",
+          patches.validate_patch(dict(p, date="2025-12-31")) == [])
+    check("patch date: Sat 2027-01-02 (year start) rejected",
+          patches.validate_patch(dict(p, date="2027-01-02")) != [])
+
+
 def test_real_data_smoke():
     import json
     root = Path(__file__).resolve().parents[1]
@@ -364,6 +400,11 @@ def test_real_data_smoke():
     check("real: price frame passes guard",
           guard.validate_price_rows(prices["rows"]) == [])
     lookup = {r[0]: r for r in prices["rows"]}
+    ppf = root / "data" / "price_patches.json"
+    if ppf.exists():
+        pdates = [x["date"] for x in json.loads(ppf.read_text(encoding="utf-8"))["rows"]]
+        check("real: every patched session is in the price index",
+              all(d in lookup for d in pdates), str([d for d in pdates if d not in lookup]))
     check("real: ledger passes guard", guard.validate_ledger(ledger, lookup) == [],
           str(guard.validate_ledger(ledger, lookup)[:3]))
     p, edu = engine.build(prices, ledger)

@@ -13,6 +13,7 @@ import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).parent))
 import guard
+import patches
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -71,7 +72,13 @@ def main():
     old_rows = old["rows"] if old else []
     try:
         rows, divs, meta = fetch_frame()
-        errs = guard.validate_price_rows(rows) + guard.validate_replacement(rows, old_rows)
+        pf = load_json(DATA / "price_patches.json")
+        rows, patch_errs, patch_notes = patches.apply_patches(
+            rows, pf["rows"] if pf else [], divs)
+        for n in patch_notes:
+            print(n)
+        errs = (patch_errs + guard.validate_price_rows(rows)
+                + guard.validate_replacement(rows, old_rows))
     except Exception as e:
         rows, divs, meta = [], [], {}
         errs = [f"fetch failed: {e}"]

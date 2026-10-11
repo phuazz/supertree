@@ -1,0 +1,16 @@
+{
+  "note": "Raw OHLC for genuine SGX sessions that Yahoo's ES3.SI history lacks. Merged by scripts/patches.py on every fetch, only where Yahoo has no row; adjclose is derived at merge time from the adjacent Yahoo row, never stored. Each row carries its source.",
+  "rows": [
+    {
+      "date": "2025-10-24",
+      "open": 4.47,
+      "high": 4.5,
+      "low": 4.47,
+      "close": 4.48,
+      "volume_k_units": 844.989,
+      "source": "SGX https://api.sgx.com/securities/v1.1/charts/historic/etfs/code/ES3/1y",
+      "retrieved": "2026-10-11",
+      "reason": "Absent from Yahoo; SGX records a full session (prev close 4.466 = Yahoo 2025-10-23 close; next session's prev close 4.48 = this close)."
+    }
+  ]
+}

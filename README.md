@@ -13,12 +13,14 @@ supertree/
 │   ├── transactions.json  # SOURCE OF TRUTH — hand-maintained ledger
 │   ├── prices.json        # daily OHLC + adjclose, written by scripts/fetch.py
 │   ├── dividends.json     # ex-date + DPS, written by scripts/fetch.py
+│   ├── price_patches.json # hand-maintained: SGX sessions Yahoo lacks, raw OHLC + source
 │   ├── portfolio.json     # engine output — position, decomposition, risk, trend, projection
 │   ├── education.json     # engine output — long-history context, drawdown episodes
 │   └── status.json        # refresh status + guard verdict, always written
 ├── scripts/
 │   ├── fetch.py           # Yahoo pull with replacement guard (keep-last-good)
 │   ├── guard.py           # validation: price frame, replacement, ledger
+│   ├── patches.py         # merges price_patches.json where Yahoo has no row
 │   ├── engine.py          # valuation, decomposition, XIRR, drawdowns, milestones
 │   ├── tests.py           # zero-dependency test suite (run: python scripts/tests.py)
 │   └── pipeline.py        # engine outputs + inject into template → docs/index.html
@@ -45,11 +47,14 @@ One row per event, dates are ISO `YYYY-MM-DD` and must be SGX trading dates:
 
 ## Guard layer
 
-No unattended refresh without a guard. `fetch.py` replaces `prices.json` only if the new series is non-empty, at least as long as the existing one, ends no earlier, has strictly increasing dates, positive closes, no implausible daily move, and matches the existing series on overlapping recent dates (raw close, tight tolerance — catches silent restatements and ticker identity switches). On failure the last good data is kept and `status.json` records the reason; the page shows a stale badge whenever the data is older than 7 days, so a dead refresh is visible rather than silent.
+No unattended refresh without a guard. `fetch.py` replaces `prices.json` only if the new series is non-empty, ends no earlier, has strictly increasing dates, positive closes, no implausible daily move, matches the existing series on overlapping recent dates (raw close, tight tolerance — catches silent restatements and ticker identity switches), and keeps every existing date. The one exception is a phantom holiday row (flat bar at the previous close), which Yahoo carried on four 2026 SGX holidays and removed on 2026-10-09; any other lost date fails. On failure the last good data is kept, `status.json` records the reason, the page shows "refresh failing", and the Actions job ends red after committing that status. Fleet watch reads the same verdict (`supertree price guard`).
+
+Sessions Yahoo lacks are added from `data/price_patches.json` (raw OHLC from SGX, each row with source and retrieval date; one row so far, 2025-10-24). A patch applies only where Yahoo has no row; if Yahoo later supplies the date and agrees, Yahoo wins, and if it disagrees the refresh fails for review. Adjusted close is derived at merge time, never stored.
 
 ## Data sources
 
 - Prices and dividends: Yahoo Finance via `yfinance` (ES3.SI — SPDR Straits Times Index ETF, SGD). Ticker verified against the issuer product page at build time.
+- Second source: SGX's public chart API (`api.sgx.com/securities/v1.1/charts/historic/etfs/code/ES3/1y`). On 2026-10-11, 249 shared sessions matched Yahoo's raw close exactly; it supplies the patch rows.
 - Valuation uses raw close only. Adjusted close is used solely for long-history context charts and is labelled as such — never in the valuation path, so dividends are not double-counted.
 
-*Last updated: 2026-07-18. Unlisted: `noindex` on the page, never added to the phuazz.github.io hub.*
+*Last updated: 2026-10-11. Unlisted: `noindex` on the page, never added to the phuazz.github.io hub.*
