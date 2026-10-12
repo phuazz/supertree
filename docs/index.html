@@ -168,7 +168,11 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .money-in input.rate { width:54px; text-align:right; }
 .fwd-out.two { grid-template-columns:repeat(2,1fr); }
 .path-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:8px; }
-#path-note { font-size:13px; color:var(--t3-text); }
+#path-note { font-size:13px; color:var(--t3-text); flex:1 1 320px; }
+.how { margin-top:12px; border:1px solid var(--bd); border-radius:var(--radius); background:var(--bg3); padding:10px 14px; }
+.how summary { cursor:pointer; font-size:14px; font-weight:600; color:var(--t2); min-height:28px; }
+.how p { font-size:14px; line-height:1.6; color:var(--t2); margin-top:8px; }
+.how p b { color:var(--t1); }
 .sim { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:4px 0 16px; }
 .sim label { font-size:14px; color:var(--t2); font-weight:600; }
 .money-in { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--bd2); border-radius:var(--radius); background:var(--bg2); padding:0 10px; min-height:44px; }
@@ -317,6 +321,12 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
       <div class="fwd-out" id="fwd-dd"></div>
       <div id="c-forward" style="height:340px"></div>
       <div class="path-row"><span class="chips" id="path-btns"></span><span id="path-note"></span></div>
+      <details class="how">
+        <summary>How are these paths made?</summary>
+        <p><b>A made-up path</b> is like rolling a special dice once a month. Most rolls nudge your money up or down a little; now and then a roll brings a big jump or a big drop. On average the rolls add up to the growth you picked, and over a year they swing about as much as this fund really has since 2008. The made-up line is one set of monthly rolls — 120 rolls for 10 years. The page rolls 2,000 sets: the funnel shows where most of them end up, and “Show another” picks a different set.</p>
+        <p><b>A real past stretch</b> is not made up at all. It replays what this fund actually did, month by month (with dividends put back in), as if you had started then with the same money. Your growth setting does not change it — that is what really happened.</p>
+        <p><b>Why both?</b> Made-up rolls are fair, but each month is rolled on its own. Real markets have calm spells and stormy spells that bunch together — in 2008 the bad months came one after another. The real stretch shows that.</p>
+      </details>
       <p class="sim-note" id="sim-note"></p>
     </div>
   </div><!-- /panel-future -->
@@ -1030,7 +1040,31 @@ function typicalPath(pr){
   return mid.reduce((best, j) => Math.abs(f.mdd[j] - f.ddTypical) < Math.abs(f.mdd[best] - f.ddTypical) ? j : best, mid[0]);
 }
 function rateLabel(g){ return (Math.round(g * 1000) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
-let simAdd = 0, simStart = 0, simYears = 10, simMu = 0, simPath = 0, simShowPath = false;  // funnel starts plain
+let simAdd = 0, simStart = 0, simYears = 10, simMu = 0, simPath = 0, simReal = 0;
+let simMode = 'none';  // 'none' plain funnel | 'sim' a made-up path | 'real' a replayed past stretch
+
+/* Real past stretch: replay the fund's month-end ADJUSTED close (dividends in,
+   education.series_monthly) for Y years from a window start, scaled to the
+   chosen start amount and top-ups. Windows step a year at a time from the
+   start of history. The fall is measured on the fund itself, like the sim. */
+function realWindows(edu, Y){
+  const m = edu.series_monthly, N = Y * 12;
+  return m.length - 1 >= N ? Math.floor((m.length - 1 - N) / 12) + 1 : 0;
+}
+function realPath(edu, w, P, C, Y){
+  const m = edu.series_monthly, N = Y * 12, i0 = w * 12;
+  const out = { path: [P], from: m[i0][0], to: m[i0 + N][0], dd: 0, pk: 0, tk: 0 };
+  let v = P, peak = m[i0][1], peakK = 0;
+  for (let k = 1; k <= N; k++){
+    const a = m[i0 + k][1];
+    v = v * (a / m[i0 + k - 1][1]) + C;  // grow by what really happened, then add the month's money
+    out.path.push(v);
+    if (a > peak){ peak = a; peakK = k; }
+    const dd = a / peak - 1;
+    if (dd < out.dd){ out.dd = dd; out.tk = k; out.pk = peakK; }
+  }
+  return out;
+}
 function renderProjection(p, edu){
   const pr = p.projection;
   if (!pr){
@@ -1104,9 +1138,11 @@ function renderProjection(p, edu){
 
   document.getElementById('path-btns').addEventListener('click', e => {
     const a = e.target.closest('button') && e.target.closest('button').dataset.act;
-    if (a === 'show') simShowPath = true;
-    else if (a === 'next') simPath = (simPath + 1) % SIM_PATHS;
-    else if (a === 'hide') simShowPath = false;
+    if (a === 'sim') simMode = 'sim';
+    else if (a === 'sim-next') simPath = (simPath + 1) % SIM_PATHS;
+    else if (a === 'real'){ simMode = 'real'; simReal = 0; }  // first real stretch starts in 2008: the hard one
+    else if (a === 'real-next') simReal = simReal + 1;
+    else if (a === 'plain') simMode = 'none';
     else return;
     drawForward(p);
   });
@@ -1146,13 +1182,25 @@ function drawForward(p){
     cell('lo', 'Bad-luck picture in ' + Y + ' years', 'S$' + groupMoney(end.lo), '1 time in 10 it ends lower') +
     cell('mid', 'Middle picture in ' + Y + ' years', 'S$' + groupMoney(end.mid), 'half end higher, half lower') +
     cell('hi', 'Good-luck picture in ' + Y + ' years', 'S$' + groupMoney(end.hi), '1 time in 10 it ends higher');
+  // the path to draw, if any: a made-up one (sim) or a replayed real stretch
+  const nReal = edu ? realWindows(edu, Y) : 0;
+  let path = null;
+  if (simMode === 'sim'){
+    path = { y: f.path, dd: f.pathDD, pk: f.pathPeakK, tk: f.pathTroughK, color: '#5c5c56',
+             name: 'One made-up bumpy path', box: 'Made-up path’s biggest fall', hover: 'Made-up path' };
+  } else if (simMode === 'real' && nReal > 0){
+    const r = realPath(edu, simReal % nReal, P, C, Y), i0 = (simReal % nReal) * 12;
+    path = { real: edu.series_monthly.slice(i0, i0 + Y * 12 + 1).map(x => fmtMon(x[0])), y: r.path, dd: r.dd, pk: r.pk, tk: r.tk, color: '#2563eb', from: r.from, to: r.to,
+             name: 'Real: ' + fmtMon(r.from) + ' – ' + fmtMon(r.to), box: 'Real ' + fmtMon(r.from) + ' – ' + fmtMon(r.to) + ' biggest fall',
+             hover: 'What really happened' };
+  }
   const ddEl = document.getElementById('fwd-dd');
-  ddEl.classList.toggle('two', !simShowPath);
+  ddEl.classList.toggle('two', !path);
   ddEl.innerHTML =
     cell('dd', 'Usual biggest fall on the way', pct(f.ddTypical), 'from a high point, at some time in ' + Y + ' years') +
     cell('dd', 'Bad-luck biggest fall', pct(f.ddBad), '1 time in 10 it falls this much or more') +
-    (simShowPath ? cell('dd', 'Grey path’s biggest fall', pct(f.pathDD), 'marked on the chart below') : '');
-  const tk = simShowPath ? f.pathTroughK : 0, pk = f.pathPeakK;
+    (path ? cell('dd', path.box, pct(path.dd), 'marked on the chart below') : '');
+  const tk = path ? path.tk : 0, pk = path ? path.pk : 0;
   const traces = [
     { x: dates, y: f.p10, mode: 'lines', name: 'Bad-luck line', line: { color: '#22a366', width: 1.2 },
       hovertemplate: 'Bad luck: S$%{y:,.0f}<extra></extra>' },
@@ -1163,26 +1211,40 @@ function drawForward(p){
     { x: dates, y: f.putIn, mode: 'lines', name: 'Money you put in',
       line: { color: '#8a8a82', width: 1.4, dash: 'dot' }, hovertemplate: 'Money in: S$%{y:,.0f}<extra></extra>' }
   ];
-  if (simShowPath) traces.push({ x: dates, y: f.path, mode: 'lines', name: 'One possible bumpy path',
-    line: { color: '#5c5c56', width: 1.3 }, hovertemplate: 'This path: S$%{y:,.0f}<extra></extra>' });
-  if (tk > 0) traces.push({ x: [dates[pk], dates[tk]], y: [f.path[pk], f.path[tk]], mode: 'markers',
-    marker: { color: ['#5c5c56', '#c0392b'], size: 7 }, showlegend: false, hoverinfo: 'skip' });
+  if (path) traces.push({ x: dates, y: path.y, mode: 'lines', name: path.name,
+    line: { color: path.color, width: simMode === 'real' ? 1.8 : 1.3 }, customdata: path.real,
+    hovertemplate: path.real ? 'Really %{customdata}: S$%{y:,.0f}<extra></extra>'
+                             : path.hover + ': S$%{y:,.0f}<extra></extra>' });
+  if (tk > 0) traces.push({ x: [dates[pk], dates[tk]], y: [path.y[pk], path.y[tk]], mode: 'markers',
+    marker: { color: [path.color, '#c0392b'], size: 7 }, showlegend: false, hoverinfo: 'skip' });
   // label on a backed annotation so it stays readable when it sits on the middle line
-  const ann = tk > 0 ? [{ x: dates[tk], y: f.path[tk], text: 'fall ' + pct(f.pathDD), showarrow: true, arrowhead: 0,
+  const ann = tk > 0 ? [{ x: dates[tk], y: path.y[tk], text: 'fall ' + pct(path.dd), showarrow: true, arrowhead: 0,
     arrowcolor: '#c0392b', ax: 0, ay: 30, bgcolor: 'rgba(255,255,255,0.92)', bordercolor: 'rgba(192,57,43,0.35)',
     borderpad: 3, font: { color: '#a93226', size: 11, family: 'JetBrains Mono' } }] : [];
   Plotly.react('c-forward', traces, houseLayout({ yaxis: ySgd(',.0f'), xaxis: { tickformat: "'%y" }, annotations: ann }),
     { displayModeBar: false, responsive: true });
-  document.getElementById('path-btns').innerHTML = simShowPath
-    ? '<button class="chip" type="button" data-act="next">Show another bumpy path</button>' +
-      '<button class="chip" type="button" data-act="hide">Back to the plain funnel</button>'
-    : '<button class="chip" type="button" data-act="show">Show a bumpy path</button>';
-  document.getElementById('path-note').textContent = !simShowPath
-    ? 'Real money does not travel smoothly along the middle line. Press the button to see one made-up bumpy future.'
-    : tk > 0
-    ? 'The grey line is one made-up future. The fund’s worst fall runs from ' + fmtMon(dates[pk]) + ' to ' + fmtMon(dates[tk]) + '.' +
-      (C > 0 ? ' Because you kept adding money, your pot dips much less than the fund does.' : '')
-    : 'The grey line is one made-up future — this one never fell.';
+  const btn = (act, label) => '<button class="chip" type="button" data-act="' + act + '">' + label + '</button>';
+  const realBtn = nReal > 0 ? btn('real', 'Show a real past ' + Y + ' years') : '';
+  document.getElementById('path-btns').innerHTML =
+    simMode === 'sim'  ? btn('sim-next', 'Show another made-up path') + realBtn + btn('plain', 'Back to the plain funnel') :
+    simMode === 'real' ? (nReal > 1 ? btn('real-next', 'Show another real stretch') : '') + btn('sim', 'Show a made-up path') + btn('plain', 'Back to the plain funnel') :
+                         btn('sim', 'Show a made-up bumpy path') + realBtn;
+  const pathMonths = path && tk > 0 && path.from
+    ? (k => fmtMon(edu.series_monthly[(simReal % nReal) * 12 + k][0]))  // real calendar months
+    : (k => fmtMon(dates[k]));
+  document.getElementById('path-note').textContent =
+    simMode === 'real' && nReal === 0
+      ? 'There are only about ' + Math.floor((edu.series_monthly.length - 1) / 12) + ' years of real history so far, so a real ' + Y +
+        '-year stretch is not possible yet. Pick 5 or 10 years to replay one.'
+    : !path
+      ? 'Real money does not travel smoothly along the middle line. Press a button to see one bumpy future — made-up, or a real one from the past.'
+    : (simMode === 'real'
+        ? 'The blue line is what really happened from ' + fmtMon(path.from) + ' to ' + fmtMon(path.to) + ', as if you started then with the same money' +
+          (Math.abs(mu - pr.mu_log) > 1e-9 ? ' (your growth setting does not change it).' : '.')
+        : 'The grey line is one made-up future.') +
+      (tk > 0 ? ' The fund’s worst fall runs from ' + pathMonths(pk) + ' to ' + pathMonths(tk) + '.' +
+                (C > 0 ? ' Because you kept adding money, your pot dips much less than the fund does.' : '')
+              : ' This one never fell from a high.');
   note.innerHTML = 'Start with <b>S$' + groupMoney(P) + '</b>' + (C > 0 ? ' and add <b>S$' + groupMoney(C) + '</b> every month' : '') +
     ', growing <b>' + rateLabel(g) + ' a year</b> on average. After <b>' + Y + ' years</b> the middle picture is about <b>S$' +
     groupMoney(end.mid) + '</b>. Bad luck could leave about <b>S$' + groupMoney(end.lo) + '</b>; good luck could give <b>S$' +

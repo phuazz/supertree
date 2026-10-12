@@ -437,6 +437,13 @@ def test_real_data_smoke():
           f'{fz["cagr"]} vs {edu["long_run"]["cagr_since_start"]}')
     check("real: funnel default horizon 10y, offers up to 20y",
           fz["default_years"] == 10 and fz["years"] == 20)
+    # "Show a real past 10 years" replays education.series_monthly in the page
+    sm = edu["series_monthly"]
+    check("real: monthly history is one point per month, in order (real-stretch replay)",
+          all(sm[i][0][:7] < sm[i + 1][0][:7] for i in range(len(sm) - 1)) and
+          all(v > 0 for _, v in sm))
+    check("real: enough monthly history to replay at least one 10-year stretch",
+          len(sm) >= 121, f"{len(sm)} points")
     # Model check: the lognormal 10-year spread must agree with a 12-month block
     # bootstrap of REAL monthly returns (demeaned, so only dispersion is compared).
     import random
