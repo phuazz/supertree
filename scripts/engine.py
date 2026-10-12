@@ -14,15 +14,22 @@ DD_EPISODE_THRESHOLD = -0.20  # education layer: falls of 20%+ count as episodes
 DD5 = -0.05                   # milestone: first 5% drawdown experienced/survived
 
 # Forward view — lognormal "funnel". SIGNED OFF by ZH 2026-10-12 (replaces the
-# fixed low/mid/high CAGR bands signed off 2026-07-18). Both parameters are
-# computed on every build from data/prices.json (Yahoo ES3.SI adjusted close):
-#   mu_log  log growth rate from the FIRST row of history to the last. History
-#           starts 2 Jan 2008, at a market peak just before the GFC — the
-#           conservative start date ZH chose, so the median does not flatter.
-#   sigma   stdev of monthly log returns x sqrt(12).
+# fixed low/mid/high CAGR bands signed off 2026-07-18).
+#   growth  ASSUMED, not from data: PROJECTION_ASSUMED_CAGR, ZH's forward view
+#           that equities return about 6-8% a year nominal with dividends
+#           reinvested (signed off 2026-10-12; 7% = middle of that range). The
+#           page labels it a best guess and shows the data figures beside it.
+#   sigma   computed on every build from data/prices.json (Yahoo ES3.SI
+#           adjusted close): stdev of monthly log returns x sqrt(12).
+# Data figures, also computed on every build and shown for comparison:
+#   hist    growth from the FIRST row of history (2 Jan 2008, a pre-GFC peak).
+#   rolling10  median / 1-in-10 / 9-in-10 growth over every real 10-year
+#           stretch of month-end history (overlapping; few independent decades).
 # Outcome at t years: P * exp(mu_log*t + z*sigma*sqrt(t)), z per percentile.
 # Cross-checked against a 12-month block bootstrap of real history in tests.
 FUNNEL_Z = {"p10": -1.2815516, "p50": 0.0, "p90": 1.2815516}
+PROJECTION_ASSUMED_CAGR = 0.07            # ZH-signed assumption, see note above
+PROJECTION_ASSUMED_RANGE = (0.06, 0.08)   # the range it is the middle of
 PROJECTION_YEARS = 20          # longest horizon offered; NO age or birth-year ever reaches the page
 PROJECTION_DEFAULT_YEARS = 10  # horizon shown on first load
 
@@ -147,7 +154,8 @@ def build(prices, ledger_rows):
         "events": {"buys": buys, "divs": divs},
         "risk": risk,
         "trend": _trend(rows),
-        "projection": _projection(value_now, as_of, fp) if (fp := _funnel_params(rows)) else None,
+        "projection": (_projection(value_now, as_of, fp, cagr=PROJECTION_ASSUMED_CAGR)
+                       if (fp := _funnel_params(rows)) else None),
         "milestones": milestones,
     }
     education = _education(rows)
@@ -285,11 +293,19 @@ def _funnel_params(rows):
         return None
     mean = sum(lr) / len(lr)
     sigma = math.sqrt(sum((x - mean) ** 2 for x in lr) / (len(lr) - 1)) * math.sqrt(12.0)
-    return {"mu_log": mu_log, "sigma": sigma,
+    # every real 10-year stretch (120 month-ends apart), one per starting month
+    ten = sorted((month_end[i + 120] / month_end[i]) ** 0.1 - 1.0 for i in range(len(month_end) - 120))
+    rolling10 = None
+    if ten:
+        n = len(ten)
+        med = ten[n // 2] if n % 2 else (ten[n // 2 - 1] + ten[n // 2]) / 2.0
+        rolling10 = {"median": round(med, 6), "p10": round(ten[int(0.1 * n)], 6),
+                     "p90": round(ten[int(0.9 * n)], 6), "count": n}
+    return {"mu_log": mu_log, "sigma": sigma, "rolling10": rolling10,
             "history_start": first_d, "history_end": last_d, "months": len(lr)}
 
 
-def _projection(value_now, as_of, params, years=None):
+def _projection(value_now, as_of, params, years=None, cagr=None):
     """Forward funnel: P10 / median / P90 of a lognormal outcome for today's
     ETF value, one anchor per year (0..years).
 
@@ -300,7 +316,9 @@ def _projection(value_now, as_of, params, years=None):
     top-up; with no top-up and today's value it must reproduce these series.
     Loud if the band is not ordered p10<=p50<=p90 at every step."""
     years = PROJECTION_YEARS if years is None else years
-    mu, sig = params["mu_log"], params["sigma"]
+    # growth: the signed-off assumption when given, else the history rate
+    mu = math.log(1.0 + cagr) if cagr is not None else params["mu_log"]
+    sig = params["sigma"]
     y, mo, day = (int(x) for x in as_of.split("-"))  # ISO months 1-indexed
     day = min(day, 28)  # clamp so +k years never lands on 29 Feb of a non-leap year
     P = float(value_now)
@@ -322,6 +340,11 @@ def _projection(value_now, as_of, params, years=None):
         "cagr": round(math.exp(mu) - 1.0, 6),
         "sigma": round(sig, 6),
         "z": dict(FUNNEL_Z),
+        "growth_basis": "assumed" if cagr is not None else "history",
+        "assumed_range": list(PROJECTION_ASSUMED_RANGE) if cagr is not None else None,
+        "hist_mu_log": round(params["mu_log"], 6),
+        "hist_cagr": round(math.exp(params["mu_log"]) - 1.0, 6),
+        "rolling10": params.get("rolling10"),
         "history_start": params["history_start"],
         "history_end": params["history_end"],
         "dates": dates,

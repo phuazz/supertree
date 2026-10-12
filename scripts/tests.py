@@ -312,6 +312,12 @@ def test_funnel_params_from_data():
           abs(prm["mu_log"] - math.log(1.01 ** 36) / yrs) < 1e-9, f'got {prm["mu_log"]}')
     check("funnel params: constant growth -> sigma 0", prm["sigma"] < 1e-9, f'got {prm["sigma"]}')
     check("funnel params: uses ADJUSTED close (raw close flat here)", prm["mu_log"] > 0.1)
+    check("funnel params: under 10 years of history -> no 10-year-stretch figures",
+          prm["rolling10"] is None)
+    f7 = engine._projection(1000.0, "2026-10-09", prm, years=10, cagr=0.07)
+    check("funnel: an assumed growth rate drives the median (1000 * 1.07^10)",
+          abs(f7["end"]["p50"] - 1000 * 1.07 ** 10) < 0.01 and f7["growth_basis"] == "assumed",
+          f'got {f7["end"]["p50"]}')
 
 
 def test_trend_sma():
@@ -432,9 +438,18 @@ def test_real_data_smoke():
     fz = p["projection"]
     check("real: funnel starts from the first row of history (conservative start)",
           fz["history_start"] == prices["rows"][0][0] == edu["history_start"])
-    check("real: funnel median CAGR == since-start total-return CAGR",
-          abs(fz["cagr"] - edu["long_run"]["cagr_since_start"]) < 1e-5,
-          f'{fz["cagr"]} vs {edu["long_run"]["cagr_since_start"]}')
+    check("real: default growth is the signed-off 7% ASSUMPTION, labelled as such",
+          abs(fz["cagr"] - engine.PROJECTION_ASSUMED_CAGR) < 1e-6 and fz["growth_basis"] == "assumed"
+          and fz["assumed_range"] == [0.06, 0.08], f'{fz["cagr"]} {fz["growth_basis"]}')
+    check("real: history growth (shown beside it) == since-start total-return CAGR",
+          abs(fz["hist_cagr"] - edu["long_run"]["cagr_since_start"]) < 1e-5,
+          f'{fz["hist_cagr"]} vs {edu["long_run"]["cagr_since_start"]}')
+    sm10 = edu["series_monthly"]
+    ten = sorted((sm10[i + 120][1] / sm10[i][1]) ** 0.1 - 1 for i in range(len(sm10) - 120))
+    r10 = fz["rolling10"]
+    check("real: 10-year-stretch figures match an independent count from monthly history",
+          r10 is not None and r10["count"] == len(ten) and abs(r10["median"] - ten[len(ten) // 2]) < 2e-3
+          and r10["p10"] <= r10["median"] <= r10["p90"], f"{r10} vs median {ten[len(ten) // 2]:.4f}")
     check("real: funnel default horizon 10y, offers up to 20y",
           fz["default_years"] == 10 and fz["years"] == 20)
     # "Show a real past 10 years" replays education.series_monthly in the page

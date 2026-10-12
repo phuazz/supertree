@@ -979,7 +979,7 @@ function monthDates(startIso, months){
   return out;
 }
 function funnel(pr, mu, P, C, Y, pathIx){
-  // mu: log growth per year (pr.mu_log from history, or ln(1+g) for a picked rate).
+  // mu: log growth per year (pr.mu_log = the signed-off 7% assumption, or ln(1+g) for a picked rate).
   // sigma always stays at the historical figure: faster growth does not remove bad years.
   const sg = pr.sigma, z = pr.z, N = Y * 12;
   const f = { p10: [], p50: [], p90: [], putIn: [], path: [P] };
@@ -1120,12 +1120,20 @@ function renderProjection(p, edu){
 
   // growth picker: the history rate (exact engine mu) plus round alternatives
   const rIn = document.getElementById('sim-rate');
-  const rates = [[0.03, '3%'], ['hist', rateLabel(pr.cagr) + ' (since 2008)'], [0.07, '7%'], [0.09, '9%']];
+  // growth buttons: two real-data figures, then the signed-off 6%-8% range with
+  // its middle (the default). Each button carries its log growth rate.
+  const r10 = pr.rolling10, lo = pr.assumed_range ? pr.assumed_range[0] : null, hi = pr.assumed_range ? pr.assumed_range[1] : null;
+  const rates = [];
+  if (r10) rates.push([Math.log(1 + r10.median), rateLabel(r10.median) + ' (real 10-year stretches)']);
+  rates.push([pr.hist_mu_log, rateLabel(pr.hist_cagr) + ' (since the 2008 peak)']);
+  if (lo != null) rates.push([Math.log(1 + lo), rateLabel(lo)]);
+  rates.push([pr.mu_log, rateLabel(pr.cagr) + (pr.growth_basis === 'assumed' ? ' (best guess)' : '')]);
+  if (hi != null) rates.push([Math.log(1 + hi), rateLabel(hi)]);
   const rw = document.getElementById('rate-chips');
   rw.innerHTML = rates.map(r => '<button class="chip" data-r="' + r[0] + '">' + r[1] + '</button>').join('');
-  const setRate = g => { simMu = g === 'hist' ? pr.mu_log : Math.log(1 + g); rIn.value = rateLabel(Math.exp(simMu) - 1).replace('%', ''); };
+  const setRate = mu => { simMu = mu; rIn.value = rateLabel(Math.exp(simMu) - 1).replace('%', ''); };
   rw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
-    setRate(b.dataset.r === 'hist' ? 'hist' : +b.dataset.r); drawForward(p);
+    setRate(+b.dataset.r); drawForward(p);
   }));
   rIn.addEventListener('input', () => {
     const v = numOf(rIn.value);
@@ -1134,7 +1142,7 @@ function renderProjection(p, edu){
     drawForward(p);
   });
   rIn.addEventListener('blur', () => { rIn.value = rateLabel(Math.exp(simMu) - 1).replace('%', ''); });
-  setRate('hist');
+  setRate(pr.mu_log);
 
   document.getElementById('path-btns').addEventListener('click', e => {
     const a = e.target.closest('button') && e.target.closest('button').dataset.act;
@@ -1150,21 +1158,26 @@ function renderProjection(p, edu){
 }
 function drawForward(p){
   const pr = p.projection, P = simStart, C = simAdd, Y = simYears, mu = simMu;
-  const g = Math.exp(mu) - 1, isHist = Math.abs(mu - pr.mu_log) < 1e-9;
+  const g = Math.exp(mu) - 1, isDefault = Math.abs(mu - pr.mu_log) < 1e-5;
   document.querySelectorAll('#start-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.v === P));
   document.querySelectorAll('#sim-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.c === C));
   document.querySelectorAll('#yr-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.y === Y));
   document.querySelectorAll('#rate-chips .chip').forEach(b => b.classList.toggle('active',
-    b.dataset.r === 'hist' ? isHist : (!isHist && Math.abs(Math.log(1 + +b.dataset.r) - mu) < 1e-9)));
+    Math.abs(+b.dataset.r - mu) < 1e-5));
   const edu = window.__FUNNEL_EDU__, deep = edu && edu.episodes && edu.episodes.length ? edu.episodes[0] : null;
+  const assumed = pr.growth_basis === 'assumed', r10 = pr.rolling10;
+  const guess = assumed
+    ? 'Our best guess is about <b>' + rateLabel(pr.cagr) + ' a year</b>, with dividends put back in — shares over the long run usually return somewhere between <b>' +
+      rateLabel(pr.assumed_range[0]) + ' and ' + rateLabel(pr.assumed_range[1]) + '</b> a year. That is a guess, not a promise.'
+    : 'This uses the fund’s real growth since 2008: about <b>' + rateLabel(pr.cagr) + ' a year</b>.';
   document.getElementById('fwd-assume').innerHTML =
-    'How this is worked out: since <b>' + fmtDate(pr.history_start) + '</b> this fund (with dividends put back in) grew about <b>' +
-    ratePct(pr.cagr) + ' a year</b> on average, but a normal year swung up or down by about <b>' + ratePct(pr.sigma) + '</b>. ' +
-    (isHist ? 'We count from 2008, just before a big crash, so the middle line is on the careful side.'
-            : 'You picked <b>' + rateLabel(g) + ' a year</b>. The swings stay at about ' + ratePct(pr.sigma) +
-              ', because even a fast-growing fund still has bad years.') +
-    (deep ? ' Since 2008 this fund once fell <b>' + pct(Math.abs(deep.depth_pct)).replace('+', '') +
-            '</b> and took years to climb back.' : '');
+    (isDefault ? guess : 'You picked <b>' + rateLabel(g) + ' a year</b>' +
+      (assumed ? ' (our best guess is ' + rateLabel(pr.cagr) + ', in a ' + rateLabel(pr.assumed_range[0]) + '–' + rateLabel(pr.assumed_range[1]) + ' range).' : '.')) +
+    ' The ups and downs are real: in this fund a normal year swings up or down by about <b>' + ratePct(pr.sigma) + '</b>, whatever the growth.' +
+    ' For comparison, the real record: since <b>' + fmtDate(pr.history_start) + '</b> (just before a big crash) it grew <b>' + rateLabel(pr.hist_cagr) + ' a year</b>' +
+    (r10 ? ', and real 10-year stretches since then grew between <b>' + rateLabel(r10.p10) + ' and ' + rateLabel(r10.p90) +
+           '</b> a year (middle <b>' + rateLabel(r10.median) + '</b>)' : '') + '.' +
+    (deep ? ' Since 2008 this fund once fell <b>' + pct(Math.abs(deep.depth_pct)).replace('+', '') + '</b> and took years to climb back.' : '');
   const note = document.getElementById('sim-note');
   if (P + C <= 0){
     ['fwd-out', 'fwd-dd'].forEach(id => { document.getElementById(id).innerHTML = ''; });
@@ -1240,7 +1253,7 @@ function drawForward(p){
       ? 'Real money does not travel smoothly along the middle line. Press a button to see one bumpy future — made-up, or a real one from the past.'
     : (simMode === 'real'
         ? 'The blue line is what really happened from ' + fmtMon(path.from) + ' to ' + fmtMon(path.to) + ', as if you started then with the same money' +
-          (Math.abs(mu - pr.mu_log) > 1e-9 ? ' (your growth setting does not change it).' : '.')
+          (Math.abs(mu - pr.mu_log) > 1e-5 ? ' (your growth setting does not change it).' : '.')
         : 'The grey line is one made-up future.') +
       (tk > 0 ? ' The fund’s worst fall runs from ' + pathMonths(pk) + ' to ' + pathMonths(tk) + '.' +
                 (C > 0 ? ' Because you kept adding money, your pot dips much less than the fund does.' : '')
