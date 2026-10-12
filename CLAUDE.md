@@ -14,6 +14,7 @@ Layers on top of the vault `C:\dev\CLAUDE.md`. Where they conflict, this file wi
 - `data/transactions.json` is the single source of truth. Drafted rows carry `provisional: true`; provisional status must propagate to every derived figure and render visibly on the page. The inception row is a placeholder (2025-06-30) until ZH supplies the real date and cost.
 - All ledger dates must be actual SGX trading dates (validated against the price index).
 - Long-run return figures, projection bands and "biggest fall" episodes are computed from fetched data, never asserted from memory. Projection bands require ZH sign-off before they render on the page.
+- **One signed-off exception (ZH, 2026-10-12):** the forward funnel's default growth is an *assumption*, not a data figure — `PROJECTION_ASSUMED_CAGR = 0.07` (middle of ZH's 6–8% nominal, dividends-reinvested equity view) in `scripts/engine.py`. It must stay labelled on the page as a best guess, with the data figures (growth since the 2008 peak, real 10-year-stretch range) computed and shown beside it. Volatility stays data-driven. Do not "fix" it back to a historical rate, or change the number, without ZH sign-off.
 
 ## Operations — binding
 
