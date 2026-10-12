@@ -196,6 +196,7 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab active" role="tab" data-tab="money" aria-selected="true">My money</button>
     <button class="tab" role="tab" data-tab="closer" aria-selected="false">Look closer</button>
+    <button class="tab" role="tab" data-tab="future" aria-selected="false">What if?</button>
   </nav>
 
   <div class="tabpanel" id="panel-money" role="tabpanel">
@@ -285,6 +286,9 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
       <div id="c-history" style="height:340px"></div>
     </div>
 
+  </div><!-- /panel-closer -->
+
+  <div class="tabpanel" id="panel-future" role="tabpanel" hidden>
     <div class="card">
       <div class="card-title">Looking forward — where this could grow</div>
       <div class="card-sub">A picture, not a promise. The shaded funnel shows where your money could end up — most of the time it lands inside it.</div>
@@ -314,7 +318,7 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
       <div class="path-row"><button class="chip" id="path-next" type="button">Show another bumpy path</button><span id="path-note"></span></div>
       <p class="sim-note" id="sim-note"></p>
     </div>
-  </div><!-- /panel-closer -->
+  </div><!-- /panel-future -->
 </div>
 <script>
 window.__DATA__ = null;
@@ -905,7 +909,6 @@ function renderHistory(edu){
     { displayModeBar: false, responsive: true });
 }
 
-let closerRendered = false;
 function renderCloser(data){
   const p = data.portfolio, edu = data.education;
   const seg = document.getElementById('tr-seg');
@@ -922,7 +925,6 @@ function renderCloser(data){
   renderTiles(p);
   renderHoldings(p);
   renderHistory(edu);
-  renderProjection(p, edu);
 }
 
 /* Forward view — lognormal funnel, SIGNED OFF by ZH 2026-10-12. mu_log and
@@ -1154,11 +1156,13 @@ function drawForward(p){
     { x: dates, y: f.path, mode: 'lines', name: 'One possible bumpy path',
       line: { color: '#5c5c56', width: 1.3 }, hovertemplate: 'This path: S$%{y:,.0f}<extra></extra>' }
   ];
-  if (tk > 0) traces.push({ x: [dates[pk], dates[tk]], y: [f.path[pk], f.path[tk]], mode: 'markers+text',
-    marker: { color: ['#5c5c56', '#c0392b'], size: 7 }, text: ['', 'fall ' + pct(f.pathDD)],
-    textposition: 'bottom center', textfont: { color: '#a93226', size: 11, family: 'JetBrains Mono' },
-    showlegend: false, hoverinfo: 'skip' });
-  Plotly.react('c-forward', traces, houseLayout({ yaxis: ySgd(',.0f'), xaxis: { tickformat: "'%y" } }),
+  if (tk > 0) traces.push({ x: [dates[pk], dates[tk]], y: [f.path[pk], f.path[tk]], mode: 'markers',
+    marker: { color: ['#5c5c56', '#c0392b'], size: 7 }, showlegend: false, hoverinfo: 'skip' });
+  // label on a backed annotation so it stays readable when it sits on the middle line
+  const ann = tk > 0 ? [{ x: dates[tk], y: f.path[tk], text: 'fall ' + pct(f.pathDD), showarrow: true, arrowhead: 0,
+    arrowcolor: '#c0392b', ax: 0, ay: 30, bgcolor: 'rgba(255,255,255,0.92)', bordercolor: 'rgba(192,57,43,0.35)',
+    borderpad: 3, font: { color: '#a93226', size: 11, family: 'JetBrains Mono' } }] : [];
+  Plotly.react('c-forward', traces, houseLayout({ yaxis: ySgd(',.0f'), xaxis: { tickformat: "'%y" }, annotations: ann }),
     { displayModeBar: false, responsive: true });
   document.getElementById('path-note').textContent = tk > 0
     ? 'The grey line is one made-up future. The fund’s worst fall runs from ' + fmtMon(dates[pk]) + ' to ' + fmtMon(dates[tk]) + '.' +
@@ -1174,8 +1178,15 @@ function drawForward(p){
     'That is normal. The plan on a stormy day is the same: do not sell in a panic.';
 }
 
-/* Tab machinery. Tab-2 charts render lazily on first show (they would lay out
-   at 0px wide while their panel is hidden); every show re-runs Plotly resize. */
+/* Tab machinery. Each panel's charts render lazily on first show (they would
+   lay out at 0px wide while their panel is hidden); every show re-runs Plotly
+   resize. */
+const PANELS = {
+  money:  { id: 'panel-money',  render: null },
+  closer: { id: 'panel-closer', render: d => renderCloser(d) },
+  future: { id: 'panel-future', render: d => renderProjection(d.portfolio, d.education) },
+};
+const rendered = {};
 function resizePanel(id){
   document.querySelectorAll('#' + id + ' .js-plotly-plot').forEach(el => Plotly.Plots.resize(el));
 }
@@ -1185,10 +1196,10 @@ function showTab(name){
     t.classList.toggle('active', on);
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  document.getElementById('panel-money').hidden = name !== 'money';
-  document.getElementById('panel-closer').hidden = name !== 'closer';
-  if (name === 'closer' && !closerRendered){ renderCloser(window.__RENDER_DATA__); closerRendered = true; }
-  resizePanel(name === 'closer' ? 'panel-closer' : 'panel-money');
+  Object.entries(PANELS).forEach(([k, v]) => { document.getElementById(v.id).hidden = k !== name; });
+  const panel = PANELS[name];
+  if (panel.render && !rendered[name]){ panel.render(window.__RENDER_DATA__); rendered[name] = true; }
+  resizePanel(panel.id);
 }
 
 function render(data){
