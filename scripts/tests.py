@@ -4,6 +4,7 @@ Covers the four declared silent-failure modes: bad fetch overwriting good data,
 dividend double-count, date/boundary drift, provisional flags not propagating.
 The Actions refresh runs this FIRST and stops on failure (guard before cron).
 """
+import math
 import sys
 from datetime import date, timedelta  # Python datetime: months are 1-indexed
 from pathlib import Path
@@ -264,47 +265,53 @@ def test_education_episodes():
     check("education: 15% fall is not an episode", edu2["episodes"] == [])
 
 
-def test_projection_compound_maths():
-    # Lump pin: monthly compounding equals annual at the year marks, so
-    # 1,000 @ 5% for 10y = 1000 * 1.05^10 = 1,628.894... -> 1628.89
-    proj = engine._projection(1000.0, "2026-07-17",
-                              bands={"low": 0.03, "mid": 0.05, "high": 0.08}, years=10)
-    check("projection: 1,000 @5% 10y = 1628.89",
-          abs(proj["end"]["mid"] - 1628.89) < 0.01, f'got {proj["end"]["mid"]}')
-    check("projection: all bands start at the principal",
-          proj["series"]["low"][0] == 1000.0 and proj["series"]["high"][0] == 1000.0)
-    check("projection: 11 yearly anchor points (0..10)",
-          len(proj["dates"]) == 11 and len(proj["series"]["mid"]) == 11)
-    mono = all(proj["series"]["low"][k] <= proj["series"]["mid"][k] <= proj["series"]["high"][k]
-               for k in range(11))
-    check("projection: band monotonic low<=mid<=high", mono)
-    # NEVER rule-of-72: true 8% over 10y is 1000*1.08^10, not 1000*2^(10/9).
-    # Match the true endpoint to the cent, and stay far from the rule-of-72 one.
-    true_end = 1000.0 * 1.08 ** 10       # 2158.92
-    r72_end = 1000.0 * 2 ** (10 / 9.0)   # 2160.12 — the shortcut we must NOT use
-    check("projection: true compounding (1.08^10), not rule-of-72",
-          abs(proj["end"]["high"] - true_end) < 0.05 and abs(proj["end"]["high"] - r72_end) > 1.0,
-          f'got {proj["end"]["high"]}, true {true_end:.2f}, rule-of-72 {r72_end:.2f}')
+def test_funnel_maths():
+    # Known parameters: P=1,000, mu_log=0.05, sigma=0.16, 10 years.
+    # median = 1000*e^0.5 = 1648.72; p90 = 1000*e^(0.5 + 1.2815516*0.16*sqrt(10))
+    params = {"mu_log": 0.05, "sigma": 0.16, "history_start": "2008-01-02",
+              "history_end": "2026-10-09", "months": 225}
+    f = engine._projection(1000.0, "2026-10-09", params, years=10)
+    s = f["series"]
+    check("funnel: median = P*e^(mu*t) (true compounding)",
+          abs(f["end"]["p50"] - 1648.72) < 0.01, f'got {f["end"]["p50"]}')
+    p90 = 1000.0 * math.exp(0.5 + 1.2815516 * 0.16 * math.sqrt(10))
+    check("funnel: p90 = P*e^(mu*t + z*sigma*sqrt(t))",
+          abs(f["end"]["p90"] - p90) < 0.01, f'got {f["end"]["p90"]} vs {p90:.2f}')
+    check("funnel: every line starts at the principal",
+          s["p10"][0] == s["p50"][0] == s["p90"][0] == 1000.0)
+    check("funnel: 11 yearly anchor points (0..10)",
+          len(f["dates"]) == 11 and all(len(v) == 11 for v in s.values()))
+    check("funnel: ordered p10<=p50<=p90 at every step",
+          all(s["p10"][k] <= s["p50"][k] <= s["p90"][k] for k in range(11)))
+    widths = [s["p90"][k] - s["p10"][k] for k in range(11)]
+    check("funnel: dollar range widens every year",
+          all(widths[k] < widths[k + 1] for k in range(10)))
+    ann = [(s["p90"][k] / 1000.0) ** (1 / k) - (s["p10"][k] / 1000.0) ** (1 / k) for k in range(1, 11)]
+    check("funnel: yearly-rate range narrows with time (the patience lesson)",
+          all(ann[k] > ann[k + 1] for k in range(9)))
+    g = engine._projection(3000.0, "2026-10-09", params, years=10)
+    check("funnel: scales linearly with the start amount",
+          abs(g["end"]["p10"] - 3 * f["end"]["p10"]) < 0.05)
+    leap = engine._projection(1000.0, "2028-02-29", params, years=3)
+    check("funnel: 29 Feb start does not crash on non-leap years",
+          leap["dates"][1] == "2029-02-28", f'got {leap["dates"]}')
 
 
-def test_projection_monthly_contribution_reference():
-    # The what-if simulator adds S$C/month. Its closed-form annuity MUST equal
-    # an independent month-by-month loop (ordinary annuity, contribution end of
-    # month). This pins the JS formula the UI will mirror.
-    P, C, r, years = 2000.0, 100.0, 0.05, 10
-    m = (1.0 + r) ** (1.0 / 12.0) - 1.0
-    N = years * 12
-    v = P
-    for _ in range(N):          # reference: grow, then add the month's deposit
-        v = v * (1.0 + m) + C
-    closed = P * (1.0 + m) ** N + C * (((1.0 + m) ** N - 1.0) / m)
-    check("projection: annuity closed-form == month-by-month loop",
-          abs(closed - v) < 1e-6, f'{closed} vs {v}')
-    # engine base (no contributions) must be the pure lump term
-    base = engine._projection(P, "2026-07-17",
-                              bands={"low": r, "mid": r, "high": r}, years=years)["end"]["mid"]
-    check("projection: engine base == P*(1+m)^N (contribution-free)",
-          abs(base - P * (1.0 + m) ** N) < 0.01, f'{base} vs {P * (1.0 + m) ** N}')
+def test_funnel_params_from_data():
+    # Steady 1%/month growth on adjclose -> sigma 0, mu_log = ln(last/first)/years.
+    pairs, adj = [], []
+    for k in range(37):
+        y, m = 2020 + (k // 12), 1 + (k % 12)   # 1-indexed month
+        nxt = date(y + (m // 12), (m % 12) + 1, 1)  # first of the following month
+        last = nxt - timedelta(days=1)
+        pairs.append((last.isoformat(), 10.0))
+        adj.append(10.0 * 1.01 ** k)
+    prm = engine._funnel_params(mkrows(pairs, adj))
+    yrs = (date.fromisoformat(pairs[-1][0]) - date.fromisoformat(pairs[0][0])).days / 365.25
+    check("funnel params: mu_log = ln(last/first)/years (first row = start)",
+          abs(prm["mu_log"] - math.log(1.01 ** 36) / yrs) < 1e-9, f'got {prm["mu_log"]}')
+    check("funnel params: constant growth -> sigma 0", prm["sigma"] < 1e-9, f'got {prm["sigma"]}')
+    check("funnel params: uses ADJUSTED close (raw close flat here)", prm["mu_log"] > 0.1)
 
 
 def test_trend_sma():
@@ -422,6 +429,37 @@ def test_real_data_smoke():
           tr["sma_window"] == 200 and tr["sma_now"] is not None)
     check("real: trend above/below matches close vs sma",
           tr["above"] == (tr["close_now"] >= tr["sma_now"]))
+    fz = p["projection"]
+    check("real: funnel starts from the first row of history (conservative start)",
+          fz["history_start"] == prices["rows"][0][0] == edu["history_start"])
+    check("real: funnel median CAGR == since-start total-return CAGR",
+          abs(fz["cagr"] - edu["long_run"]["cagr_since_start"]) < 1e-5,
+          f'{fz["cagr"]} vs {edu["long_run"]["cagr_since_start"]}')
+    check("real: funnel default horizon 10y, offers up to 20y",
+          fz["default_years"] == 10 and fz["years"] == 20)
+    # Model check: the lognormal 10-year spread must agree with a 12-month block
+    # bootstrap of REAL monthly returns (demeaned, so only dispersion is compared).
+    import random
+    rows = prices["rows"]
+    me = [r[5] for i, r in enumerate(rows) if i + 1 == len(rows) or rows[i + 1][0][:7] != r[0][:7]]
+    lr = [math.log(me[i] / me[i - 1]) for i in range(1, len(me))]
+    mbar = sum(lr) / len(lr)
+    rnd = random.Random(20261012)
+    outs = []
+    for _ in range(3000):
+        tot, k = 0.0, 0
+        while k < 120:
+            st = rnd.randrange(len(lr) - 12)
+            for j in range(12):
+                if k < 120:
+                    tot += lr[st + j] - mbar
+                    k += 1
+        outs.append(tot)
+    outs.sort()
+    boot = outs[int(0.9 * len(outs))] - outs[int(0.1 * len(outs))]
+    model = 2 * 1.2815516 * fz["sigma"] * math.sqrt(10)
+    check("real: funnel 10y P10-P90 spread within 25% of real-history bootstrap",
+          abs(model / boot - 1) < 0.25, f"model {model:.3f} vs bootstrap {boot:.3f}")
 
 
 def main():

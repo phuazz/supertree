@@ -7,20 +7,24 @@ Pure stdlib, deterministic, loud on error. Binding rules (project CLAUDE.md):
   reinvested). Total outcome = value + dividends - money in. No double count.
 - provisional:true on any ledger row propagates to every derived figure.
 """
+import math
 from datetime import date  # Python datetime: months are 1-indexed
 
 DD_EPISODE_THRESHOLD = -0.20  # education layer: falls of 20%+ count as episodes
 DD5 = -0.05                   # milestone: first 5% drawdown experienced/survived
 
-# Forward-view bands — nominal SGD total-return CAGR. SIGNED OFF by ZH 2026-07-18.
-# Provenance (all computed from data/prices.json, Yahoo ES3.SI adjusted close):
-#   low  0.040  cautious haircut below the full-cycle total return.
-#   mid  0.051  STI total-return CAGR since 2008 (education.long_run, 18.5y,
-#               includes the full GFC cycle) — the conservative full-cycle base.
-#   high 0.080  moderated optimistic; deliberately BELOW the 10.4% (last 10y)
-#               and 17.0% (last 5y) windows so the band is not boom-anchored.
-PROJECTION_BANDS = {"low": 0.040, "mid": 0.051, "high": 0.080}
-PROJECTION_YEARS = 10  # round horizon; NO age or birth-year ever reaches the page
+# Forward view — lognormal "funnel". SIGNED OFF by ZH 2026-10-12 (replaces the
+# fixed low/mid/high CAGR bands signed off 2026-07-18). Both parameters are
+# computed on every build from data/prices.json (Yahoo ES3.SI adjusted close):
+#   mu_log  log growth rate from the FIRST row of history to the last. History
+#           starts 2 Jan 2008, at a market peak just before the GFC — the
+#           conservative start date ZH chose, so the median does not flatter.
+#   sigma   stdev of monthly log returns x sqrt(12).
+# Outcome at t years: P * exp(mu_log*t + z*sigma*sqrt(t)), z per percentile.
+# Cross-checked against a 12-month block bootstrap of real history in tests.
+FUNNEL_Z = {"p10": -1.2815516, "p50": 0.0, "p90": 1.2815516}
+PROJECTION_YEARS = 20          # longest horizon offered; NO age or birth-year ever reaches the page
+PROJECTION_DEFAULT_YEARS = 10  # horizon shown on first load
 
 
 class EngineError(Exception):
@@ -143,7 +147,7 @@ def build(prices, ledger_rows):
         "events": {"buys": buys, "divs": divs},
         "risk": risk,
         "trend": _trend(rows),
-        "projection": _projection(value_now, as_of),
+        "projection": _projection(value_now, as_of, fp) if (fp := _funnel_params(rows)) else None,
         "milestones": milestones,
     }
     education = _education(rows)
@@ -264,39 +268,65 @@ def _trend(rows, window_months=15, sma_window=200):
     }
 
 
-def _projection(value_now, as_of, bands=None, years=None):
-    """Forward illustration: today's ETF value compounded at the signed-off
-    low/mid/high total-return rates over a round horizon.
+def _funnel_params(rows):
+    """Funnel parameters from ADJUSTED close (total return, dividends in).
+    mu_log runs from the first row of history (conservative start, see
+    FUNNEL_Z note) to the last; sigma from month-end log returns. Forward
+    illustration only — never enters the valuation path."""
+    first_d, last_d = rows[0][0], rows[-1][0]
+    years = (_d(last_d) - _d(first_d)).days / 365.25
+    if years < 2:
+        return None  # too little history to estimate a spread; the page hides the funnel
+    mu_log = math.log(rows[-1][5] / rows[0][5]) / years
+    month_end = [r[5] for i, r in enumerate(rows)
+                 if i + 1 == len(rows) or rows[i + 1][0][:7] != r[0][:7]]
+    lr = [math.log(month_end[i] / month_end[i - 1]) for i in range(1, len(month_end))]
+    if len(lr) < 12:
+        return None
+    mean = sum(lr) / len(lr)
+    sigma = math.sqrt(sum((x - mean) ** 2 for x in lr) / (len(lr) - 1)) * math.sqrt(12.0)
+    return {"mu_log": mu_log, "sigma": sigma,
+            "history_start": first_d, "history_end": last_d, "months": len(lr)}
 
-    BINDING: TRUE compound maths only — monthly rate m = (1+r)^(1/12)-1 and
-    value = P*(1+m)^months. NEVER rule-of-72 / 2^doublings. Total-return basis
-    assumes dividends are reinvested; this is a labelled illustration, not a
-    promise. Emits one anchor point per year (months 0,12,...). The band must
-    stay monotonic low<=mid<=high at every step (loud on violation)."""
-    bands = PROJECTION_BANDS if bands is None else bands
+
+def _projection(value_now, as_of, params, years=None):
+    """Forward funnel: P10 / median / P90 of a lognormal outcome for today's
+    ETF value, one anchor per year (0..years).
+
+    BINDING: value_t = P * exp(mu_log*t + z*sigma*sqrt(t)). The median is true
+    compounding at CAGR = e^mu_log - 1 (never rule-of-72). Total-return basis
+    assumes dividends are reinvested; a labelled illustration, not a promise.
+    The page re-runs the same maths for any start amount, horizon and monthly
+    top-up; with no top-up and today's value it must reproduce these series.
+    Loud if the band is not ordered p10<=p50<=p90 at every step."""
     years = PROJECTION_YEARS if years is None else years
+    mu, sig = params["mu_log"], params["sigma"]
     y, mo, day = (int(x) for x in as_of.split("-"))  # ISO months 1-indexed
+    day = min(day, 28)  # clamp so +k years never lands on 29 Feb of a non-leap year
     P = float(value_now)
     dates = [date(y + k, mo, day).isoformat() for k in range(years + 1)]  # months 1-indexed in ctor
-    series, ends = {}, {}
-    for name, r in bands.items():
-        m = (1.0 + r) ** (1.0 / 12.0) - 1.0
-        series[name] = [round(P * (1.0 + m) ** (k * 12), 2) for k in range(years + 1)]
-        ends[name] = series[name][-1]
-    order = list(bands)  # rely on low/mid/high insertion order
+    series = {n: [round(P * math.exp(mu * k + z * sig * math.sqrt(k)), 2)
+                  for k in range(years + 1)]
+              for n, z in FUNNEL_Z.items()}
     for k in range(years + 1):
-        vals = [series[n][k] for n in order]
+        vals = [series[n][k] for n in FUNNEL_Z]
         if vals != sorted(vals):
-            raise EngineError(f"projection band not monotonic at step {k}: {vals}")
+            raise EngineError(f"funnel not ordered p10<=p50<=p90 at step {k}: {vals}")
     return {
-        "basis": "total_return_reinvested_illustration",
+        "basis": "lognormal_funnel_total_return_illustration",
         "start_value": round(P, 2),
         "start_date": as_of,
         "years": years,
-        "rates": dict(bands),
+        "default_years": min(PROJECTION_DEFAULT_YEARS, years),
+        "mu_log": round(mu, 6),
+        "cagr": round(math.exp(mu) - 1.0, 6),
+        "sigma": round(sig, 6),
+        "z": dict(FUNNEL_Z),
+        "history_start": params["history_start"],
+        "history_end": params["history_end"],
         "dates": dates,
         "series": series,
-        "end": {n: round(ends[n], 2) for n in order},
+        "end": {n: series[n][-1] for n in FUNNEL_Z},
     }
 
 
