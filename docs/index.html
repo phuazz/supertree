@@ -164,6 +164,10 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .fwd-cell.mid { background:var(--g-bg); }
 .fwd-cell.mid .v { color:var(--g-text); }
 .fwd-cell .s { font-size:12.5px; color:var(--t3-text); margin-top:2px; }
+.fwd-cell.dd .v { color:var(--r-text); }  /* 22px bold numerals: -text variant kept for safety */
+.money-in input.rate { width:54px; text-align:right; }
+.path-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:8px; }
+#path-note { font-size:13px; color:var(--t3-text); }
 .sim { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:4px 0 16px; }
 .sim label { font-size:14px; color:var(--t2); font-weight:600; }
 .money-in { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--bd2); border-radius:var(--radius); background:var(--bg2); padding:0 10px; min-height:44px; }
@@ -299,8 +303,15 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
         <label>How many years:</label>
         <span class="chips" id="yr-chips"></span>
       </div>
+      <div class="sim">
+        <label for="sim-rate">Growth each year:</label>
+        <span class="money-in"><input id="sim-rate" class="rate" type="text" inputmode="decimal" autocomplete="off" aria-label="Average growth per year, in percent"><span class="cur">%</span></span>
+        <span class="chips" id="rate-chips"></span>
+      </div>
       <div class="fwd-out" id="fwd-out"></div>
+      <div class="fwd-out" id="fwd-dd"></div>
       <div id="c-forward" style="height:340px"></div>
+      <div class="path-row"><button class="chip" id="path-next" type="button">Show another bumpy path</button><span id="path-note"></span></div>
       <p class="sim-note" id="sim-note"></p>
     </div>
   </div><!-- /panel-closer -->
@@ -954,12 +965,42 @@ function monthDates(startIso, months){
   }
   return out;
 }
-function funnel(pr, P, C, Y){
-  const mu = pr.mu_log, sg = pr.sigma, z = pr.z, N = Y * 12;
-  const f = { p10: [], p50: [], p90: [], putIn: [] };
+function funnel(pr, mu, P, C, Y, pathIx){
+  // mu: log growth per year (pr.mu_log from history, or ln(1+g) for a picked rate).
+  // sigma always stays at the historical figure: faster growth does not remove bad years.
+  const sg = pr.sigma, z = pr.z, N = Y * 12;
+  const f = { p10: [], p50: [], p90: [], putIn: [], path: [P] };
   for (let k = 0; k <= N; k++) f.putIn.push(P + C * k);
   const total = P + C * N;
-  if (C === 0){
+  // Simulation (always: it also measures the falls along the way). The fall is
+  // measured on the FUND itself, so monthly top-ups cannot hide it.
+  const d = getDraws(), dm = mu / 12, sm = sg / Math.sqrt(12);
+  const v = new Float64Array(SIM_PATHS).fill(P), tmp = new Float64Array(SIM_PATHS);
+  const idx = new Float64Array(SIM_PATHS), peak = new Float64Array(SIM_PATHS), mdd = new Float64Array(SIM_PATHS);
+  const pick = (arr, q) => arr[Math.round(q * (arr.length - 1))];
+  let pPeakK = 0, pTroughK = 0, pPeakAt = 0;
+  if (C > 0){ f.p10.push(P); f.p50.push(P); f.p90.push(P); }
+  for (let k = 1; k <= N; k++){
+    for (let j = 0; j < SIM_PATHS; j++){
+      const r = dm + sm * d[j * SIM_MONTHS + k - 1];
+      idx[j] += r;
+      if (idx[j] > peak[j]){ peak[j] = idx[j]; if (j === pathIx) pPeakAt = k; }
+      const dd = Math.exp(idx[j] - peak[j]) - 1;
+      if (dd < mdd[j]){ mdd[j] = dd; if (j === pathIx){ pTroughK = k; pPeakK = pPeakAt; } }
+      v[j] = v[j] * Math.exp(r) + C;  // grow, then add the month's money
+      tmp[j] = v[j];
+    }
+    f.path.push(v[pathIx]);
+    if (C > 0){
+      tmp.sort();
+      f.p10.push(pick(tmp, 0.10)); f.p50.push(pick(tmp, 0.50)); f.p90.push(pick(tmp, 0.90));
+    }
+  }
+  f.term = Array.from(v); f.mdd = Array.from(mdd);
+  const ds = Float64Array.from(mdd).sort();  // most negative first
+  f.ddTypical = pick(ds, 0.50); f.ddBad = pick(ds, 0.10);
+  f.pathDD = mdd[pathIx]; f.pathPeakK = pPeakK; f.pathTroughK = pTroughK;
+  if (C === 0){  // exact maths for the funnel lines (guarded against the engine)
     for (let k = 0; k <= N; k++){
       const t = k / 12, sq = Math.sqrt(t);
       f.p10.push(P * Math.exp(mu * t + z.p10 * sg * sq));
@@ -967,30 +1008,26 @@ function funnel(pr, P, C, Y){
       f.p90.push(P * Math.exp(mu * t + z.p90 * sg * sq));
     }
     f.chance = P > 0 ? normCdf(mu * Y / (sg * Math.sqrt(Y))) : null;
-    return f;
+  } else {
+    let ahead = 0;
+    for (let j = 0; j < SIM_PATHS; j++) if (v[j] > total) ahead++;
+    f.chance = ahead / SIM_PATHS;
   }
-  const d = getDraws(), dm = mu / 12, sm = sg / Math.sqrt(12);
-  const v = new Float64Array(SIM_PATHS).fill(P), tmp = new Float64Array(SIM_PATHS);
-  const pick = (arr, q) => arr[Math.round(q * (arr.length - 1))];
-  f.p10.push(P); f.p50.push(P); f.p90.push(P);
-  for (let k = 1; k <= N; k++){
-    for (let j = 0; j < SIM_PATHS; j++){
-      v[j] = v[j] * Math.exp(dm + sm * d[j * SIM_MONTHS + k - 1]) + C;  // grow, then add the month's money
-      tmp[j] = v[j];
-    }
-    tmp.sort();
-    f.p10.push(pick(tmp, 0.10)); f.p50.push(pick(tmp, 0.50)); f.p90.push(pick(tmp, 0.90));
-  }
-  let ahead = 0;
-  for (let j = 0; j < SIM_PATHS; j++) if (v[j] > total) ahead++;
-  f.chance = ahead / SIM_PATHS;
   return f;
 }
-function outOf10(c){
+function outOf10(c){  // a whole phrase, so "nearly all" reads naturally
   const n = Math.round(c * 10);
-  return n >= 10 ? 'nearly all 10' : n + ' out of 10';
+  return n >= 10 ? 'nearly all' : 'about ' + n + ' out of 10';
 }
-let simAdd = 0, simStart = 0, simYears = 10;
+function typicalPath(pr){
+  // A fair default path: ends near the middle and has a typical-sized fall.
+  const f = funnel(pr, pr.mu_log, 1, 0, pr.default_years, 0);
+  const order = f.term.map((t, j) => j).sort((a, b) => f.term[a] - f.term[b]);
+  const mid = order.slice(Math.floor(0.4 * SIM_PATHS), Math.ceil(0.6 * SIM_PATHS));
+  return mid.reduce((best, j) => Math.abs(f.mdd[j] - f.ddTypical) < Math.abs(f.mdd[best] - f.ddTypical) ? j : best, mid[0]);
+}
+function rateLabel(g){ return (Math.round(g * 1000) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'; }
+let simAdd = 0, simStart = 0, simYears = 10, simMu = 0, simPath = 0;
 function renderProjection(p, edu){
   const pr = p.projection;
   if (!pr){
@@ -998,27 +1035,26 @@ function renderProjection(p, edu){
     return;
   }
   // GUARD: the client's exact maths must reproduce the engine for today's value
-  const chk = funnel(pr, pr.start_value, 0, pr.years);
+  const chk = funnel(pr, pr.mu_log, pr.start_value, 0, pr.years, 0);
   ['p10', 'p50', 'p90'].forEach(q => pr.series[q].forEach((ev, yr) => {
     if (Math.abs(ev - chk[q][yr * 12]) > 0.5)
       console.error('funnel drift ' + q + ' yr' + yr + ': engine ' + ev + ' vs client ' + chk[q][yr * 12]);
   }));
-  const deep = edu && edu.episodes && edu.episodes.length ? edu.episodes[0] : null;
-  document.getElementById('fwd-assume').innerHTML =
-    'How this is worked out: since <b>' + fmtDate(pr.history_start) + '</b> this fund (with dividends put back in) grew about <b>' +
-    ratePct(pr.cagr) + ' a year</b> on average, but a normal year swung up or down by about <b>' + ratePct(pr.sigma) + '</b>. ' +
-    'We count from 2008, just before a big crash, so the middle line is on the careful side.' +
-    (deep ? ' Real years are bumpy: since 2008 this fund once fell <b>' + pct(Math.abs(deep.depth_pct)).replace('+', '') +
-            '</b> and took years to climb back.' : '');
+  window.__FUNNEL_EDU__ = edu;
   simStart = Math.round(pr.start_value);
   simYears = pr.default_years;
-  const startOpts = [[simStart, 'My money now'], [1000, 'S$1,000'], [5000, 'S$5,000'], [10000, 'S$10,000']];
+  simMu = pr.mu_log;
+  simPath = typicalPath(pr);
+
+  const startOpts = [[simStart, 'My money now'], [0, 'S$0 — only new money'], [1000, 'S$1,000'], [5000, 'S$5,000'], [10000, 'S$10,000']];
   const sw = document.getElementById('start-chips');
   sw.innerHTML = startOpts.map(o => '<button class="chip" data-v="' + o[0] + '">' + o[1] + '</button>').join('');
-  const sIn = document.getElementById('sim-start');
+  const sIn = document.getElementById('sim-start'), aIn = document.getElementById('sim-add');
   sIn.value = groupMoney(simStart);
   sw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
-    simStart = +b.dataset.v; sIn.value = groupMoney(simStart); drawForward(p);
+    simStart = +b.dataset.v; sIn.value = groupMoney(simStart);
+    if (simStart === 0 && simAdd === 0){ simAdd = 100; aIn.value = groupMoney(simAdd); }  // S$0 needs new money to show anything
+    drawForward(p);
   }));
   sIn.addEventListener('input', () => {
     const v = numOf(sIn.value);
@@ -1031,44 +1067,81 @@ function renderProjection(p, edu){
   const cw = document.getElementById('sim-chips');
   cw.innerHTML = chips.map(c => '<button class="chip" data-c="' + c + '">S$' + c + '</button>').join('');
   cw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
-    simAdd = +b.dataset.c;
-    document.getElementById('sim-add').value = groupMoney(simAdd);
-    drawForward(p);
+    simAdd = +b.dataset.c; aIn.value = groupMoney(simAdd); drawForward(p);
   }));
-  const input = document.getElementById('sim-add');
-  input.addEventListener('input', () => {
-    const v = numOf(input.value);
+  aIn.addEventListener('input', () => {
+    const v = numOf(aIn.value);
     simAdd = (isFinite(v) && v > 0) ? Math.min(Math.round(v), 100000) : 0;
     drawForward(p);
   });
-  input.addEventListener('blur', () => { input.value = groupMoney(simAdd); });
+  aIn.addEventListener('blur', () => { aIn.value = groupMoney(simAdd); });
 
   const yw = document.getElementById('yr-chips');
   yw.innerHTML = [5, 10, 20].filter(y => y <= pr.years)
     .map(y => '<button class="chip" data-y="' + y + '">' + y + ' years</button>').join('');
   yw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { simYears = +b.dataset.y; drawForward(p); }));
+
+  // growth picker: the history rate (exact engine mu) plus round alternatives
+  const rIn = document.getElementById('sim-rate');
+  const rates = [[0.03, '3%'], ['hist', rateLabel(pr.cagr) + ' (since 2008)'], [0.07, '7%'], [0.09, '9%']];
+  const rw = document.getElementById('rate-chips');
+  rw.innerHTML = rates.map(r => '<button class="chip" data-r="' + r[0] + '">' + r[1] + '</button>').join('');
+  const setRate = g => { simMu = g === 'hist' ? pr.mu_log : Math.log(1 + g); rIn.value = rateLabel(Math.exp(simMu) - 1).replace('%', ''); };
+  rw.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
+    setRate(b.dataset.r === 'hist' ? 'hist' : +b.dataset.r); drawForward(p);
+  }));
+  rIn.addEventListener('input', () => {
+    const v = numOf(rIn.value);
+    if (!isFinite(v)) return;
+    simMu = Math.log(1 + Math.max(-5, Math.min(15, v)) / 100);  // keep picks between -5% and 15% a year
+    drawForward(p);
+  });
+  rIn.addEventListener('blur', () => { rIn.value = rateLabel(Math.exp(simMu) - 1).replace('%', ''); });
+  setRate('hist');
+
+  document.getElementById('path-next').addEventListener('click', () => {
+    simPath = (simPath + 1) % SIM_PATHS; drawForward(p);
+  });
   drawForward(p);
 }
 function drawForward(p){
-  const pr = p.projection, P = simStart, C = simAdd, Y = simYears;
+  const pr = p.projection, P = simStart, C = simAdd, Y = simYears, mu = simMu;
+  const g = Math.exp(mu) - 1, isHist = Math.abs(mu - pr.mu_log) < 1e-9;
   document.querySelectorAll('#start-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.v === P));
   document.querySelectorAll('#sim-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.c === C));
   document.querySelectorAll('#yr-chips .chip').forEach(b => b.classList.toggle('active', +b.dataset.y === Y));
+  document.querySelectorAll('#rate-chips .chip').forEach(b => b.classList.toggle('active',
+    b.dataset.r === 'hist' ? isHist : (!isHist && Math.abs(Math.log(1 + +b.dataset.r) - mu) < 1e-9)));
+  const edu = window.__FUNNEL_EDU__, deep = edu && edu.episodes && edu.episodes.length ? edu.episodes[0] : null;
+  document.getElementById('fwd-assume').innerHTML =
+    'How this is worked out: since <b>' + fmtDate(pr.history_start) + '</b> this fund (with dividends put back in) grew about <b>' +
+    ratePct(pr.cagr) + ' a year</b> on average, but a normal year swung up or down by about <b>' + ratePct(pr.sigma) + '</b>. ' +
+    (isHist ? 'We count from 2008, just before a big crash, so the middle line is on the careful side.'
+            : 'You picked <b>' + rateLabel(g) + ' a year</b>. The swings stay at about ' + ratePct(pr.sigma) +
+              ', because even a fast-growing fund still has bad years.') +
+    (deep ? ' Since 2008 this fund once fell <b>' + pct(Math.abs(deep.depth_pct)).replace('+', '') +
+            '</b> and took years to climb back.' : '');
   const note = document.getElementById('sim-note');
   if (P + C <= 0){
-    document.getElementById('fwd-out').innerHTML = '';
+    ['fwd-out', 'fwd-dd'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+    document.getElementById('path-note').textContent = '';
     Plotly.react('c-forward', [], houseLayout({ yaxis: ySgd(',.0f') }), { displayModeBar: false, responsive: true });
     note.innerHTML = 'Type a starting amount, or some money to add each month, to see the funnel.';
     return;
   }
-  const f = funnel(pr, P, C, Y), N = Y * 12, dates = monthDates(pr.start_date, N);
+  const f = funnel(pr, mu, P, C, Y, simPath), N = Y * 12, dates = monthDates(pr.start_date, N);
   const end = { lo: f.p10[N], mid: f.p50[N], hi: f.p90[N] }, total = f.putIn[N];
-  const cells = [['lo', 'Bad-luck picture', end.lo, '1 time in 10 it ends lower'],
-                 ['mid', 'Middle picture', end.mid, 'half end higher, half lower'],
-                 ['hi', 'Good-luck picture', end.hi, '1 time in 10 it ends higher']];
-  document.getElementById('fwd-out').innerHTML = cells.map(c =>
-    '<div class="fwd-cell ' + c[0] + '"><div class="kpi-label">' + c[1] + ' in ' + Y + ' years</div>' +
-    '<div class="v">S$' + groupMoney(c[2]) + '</div><div class="s">' + c[3] + '</div></div>').join('');
+  const cell = (cls, label, v, sub) => '<div class="fwd-cell ' + cls + '"><div class="kpi-label">' + label + '</div>' +
+    '<div class="v">' + v + '</div><div class="s">' + sub + '</div></div>';
+  document.getElementById('fwd-out').innerHTML =
+    cell('lo', 'Bad-luck picture in ' + Y + ' years', 'S$' + groupMoney(end.lo), '1 time in 10 it ends lower') +
+    cell('mid', 'Middle picture in ' + Y + ' years', 'S$' + groupMoney(end.mid), 'half end higher, half lower') +
+    cell('hi', 'Good-luck picture in ' + Y + ' years', 'S$' + groupMoney(end.hi), '1 time in 10 it ends higher');
+  document.getElementById('fwd-dd').innerHTML =
+    cell('dd', 'Usual biggest fall on the way', pct(f.ddTypical), 'from a high point, at some time in ' + Y + ' years') +
+    cell('dd', 'Bad-luck biggest fall', pct(f.ddBad), '1 time in 10 it falls this much or more') +
+    cell('dd', 'Grey path’s biggest fall', pct(f.pathDD), 'marked on the chart below');
+  const tk = f.pathTroughK, pk = f.pathPeakK;
   const traces = [
     { x: dates, y: f.p10, mode: 'lines', name: 'Bad-luck line', line: { color: '#22a366', width: 1.2 },
       hovertemplate: 'Bad luck: S$%{y:,.0f}<extra></extra>' },
@@ -1077,16 +1150,28 @@ function drawForward(p){
     { x: dates, y: f.p50, mode: 'lines', name: 'Middle line', line: { color: '#1a8754', width: 3.5 },
       hovertemplate: 'Middle: S$%{y:,.0f}<extra></extra>' },
     { x: dates, y: f.putIn, mode: 'lines', name: 'Money you put in',
-      line: { color: '#8a8a82', width: 1.4, dash: 'dot' }, hovertemplate: 'Money in: S$%{y:,.0f}<extra></extra>' }
+      line: { color: '#8a8a82', width: 1.4, dash: 'dot' }, hovertemplate: 'Money in: S$%{y:,.0f}<extra></extra>' },
+    { x: dates, y: f.path, mode: 'lines', name: 'One possible bumpy path',
+      line: { color: '#5c5c56', width: 1.3 }, hovertemplate: 'This path: S$%{y:,.0f}<extra></extra>' }
   ];
+  if (tk > 0) traces.push({ x: [dates[pk], dates[tk]], y: [f.path[pk], f.path[tk]], mode: 'markers+text',
+    marker: { color: ['#5c5c56', '#c0392b'], size: 7 }, text: ['', 'fall ' + pct(f.pathDD)],
+    textposition: 'bottom center', textfont: { color: '#a93226', size: 11, family: 'JetBrains Mono' },
+    showlegend: false, hoverinfo: 'skip' });
   Plotly.react('c-forward', traces, houseLayout({ yaxis: ySgd(',.0f'), xaxis: { tickformat: "'%y" } }),
     { displayModeBar: false, responsive: true });
+  document.getElementById('path-note').textContent = tk > 0
+    ? 'The grey line is one made-up future. The fund’s worst fall runs from ' + fmtMon(dates[pk]) + ' to ' + fmtMon(dates[tk]) + '.' +
+      (C > 0 ? ' Because you kept adding money, your pot dips much less than the fund does.' : '')
+    : 'The grey line is one made-up future — this one never fell.';
   note.innerHTML = 'Start with <b>S$' + groupMoney(P) + '</b>' + (C > 0 ? ' and add <b>S$' + groupMoney(C) + '</b> every month' : '') +
-    '. After <b>' + Y + ' years</b> the middle picture is about <b>S$' + groupMoney(end.mid) + '</b>. ' +
-    'Bad luck could leave about <b>S$' + groupMoney(end.lo) + '</b>; good luck could give <b>S$' + groupMoney(end.hi) + '</b>. ' +
-    (f.chance != null ? 'In about <b>' + outOf10(f.chance) + '</b> pictures you end up with more than the <b>S$' +
+    ', growing <b>' + rateLabel(g) + ' a year</b> on average. After <b>' + Y + ' years</b> the middle picture is about <b>S$' +
+    groupMoney(end.mid) + '</b>. Bad luck could leave about <b>S$' + groupMoney(end.lo) + '</b>; good luck could give <b>S$' +
+    groupMoney(end.hi) + '</b>. ' +
+    (f.chance != null ? 'In <b>' + outOf10(f.chance) + '</b> pictures you end up with more than the <b>S$' +
       groupMoney(total) + '</b> you put in. ' : '') +
-    'Try 5, 10 and 20 years: the funnel gets wider in dollars, but your chance of ending ahead goes up.';
+    'On the way, the fund usually falls about <b>' + pct(f.ddTypical).replace('-', '') + '</b> from a high at least once. ' +
+    'That is normal. The plan on a stormy day is the same: do not sell in a panic.';
 }
 
 /* Tab machinery. Tab-2 charts render lazily on first show (they would lay out
