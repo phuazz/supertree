@@ -66,10 +66,10 @@
       "type": "SELL",
       "ticker": "ES3.SI",
       "units": 400,
-      "price": 5.528,
+      "price": 5.52,
       "fees": 0,
-      "provisional": true,
-      "note": "Switch out of ES3 into GAB. Priced at ES3's level at the time of the GAB purchase (about 15:07 SGT). PLACEHOLDER: 5.528 is the 13 Oct close, standing in until that price is confirmed; then set price and provisional:false. No fees: the switch costs this account nothing."
+      "provisional": false,
+      "note": "Switch out of ES3 into GAB, priced at ES3's level at the time of the GAB purchase: 5.52 at 15:08 SGT on 13 Oct 2026 (intraday chart, shown to 2 decimals, so +/- 0.005 = +/- S$2 on 400 units). No fees: the switch costs this account nothing."
     },
     {
       "date": "2026-10-13",
