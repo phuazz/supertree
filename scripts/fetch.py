@@ -3,6 +3,12 @@
 Writes data/prices.json + data/dividends.json only when the guard passes.
 data/status.json is written on every run, pass or fail, so a dead refresh is
 visible on the page rather than silent. Exit 0 on pass, 2 on guard failure.
+
+Watched funds (WATCH: shown on the page with 0 units, never valued) are
+pulled after the holding into data/watch/<symbol>.json under the same guard
+plus a currency identity check. A watch failure is recorded in
+status["watch"] and keeps that fund's last-good file, but it NEVER changes
+the exit code or the holding's data.
 """
 import json
 import sys
@@ -18,6 +24,8 @@ import patches
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 TICKER = "ES3.SI"
+WATCH = {"GAB.SI": {"label": "Amova Singapore STI ETF, accumulating class", "currency": "SGD"}}
+WATCH_DIR = DATA / "watch"
 
 
 def load_json(p):
@@ -29,8 +37,8 @@ def write_json(p, obj):
     Path(p).write_text(json.dumps(obj, separators=(",", ":")) + "\n", encoding="utf-8")
 
 
-def fetch_frame():
-    t = yf.Ticker(TICKER)
+def fetch_frame(symbol=TICKER):
+    t = yf.Ticker(symbol)
     hist = t.history(period="max", auto_adjust=False)
     if hist.empty:
         raise RuntimeError("Yahoo returned an empty frame")
@@ -86,22 +94,51 @@ def main():
         status["guard"] = "fail: " + "; ".join(errs[:6])
         status["kept_rows"] = len(old_rows)
         status["last_price_date"] = old_rows[-1][0] if old_rows else None
-        write_json(DATA / "status.json", status)
         print("GUARD FAIL — kept last-good data:\n  " + "\n  ".join(errs), file=sys.stderr)
-        sys.exit(2)
-    write_json(DATA / "prices.json",
-               {"ticker": TICKER,
-                "cols": ["date", "open", "high", "low", "close", "adjclose"],
-                "rows": rows})
-    write_json(DATA / "dividends.json", {"ticker": TICKER, "dividends": divs})
-    status["guard"] = "pass"
-    status["rows"] = len(rows)
-    status["last_price_date"] = rows[-1][0]
-    status["dividend_events"] = len(divs)
-    status["meta"] = meta
+    else:
+        write_json(DATA / "prices.json",
+                   {"ticker": TICKER,
+                    "cols": ["date", "open", "high", "low", "close", "adjclose"],
+                    "rows": rows})
+        write_json(DATA / "dividends.json", {"ticker": TICKER, "dividends": divs})
+        status["guard"] = "pass"
+        status["rows"] = len(rows)
+        status["last_price_date"] = rows[-1][0]
+        status["dividend_events"] = len(divs)
+        status["meta"] = meta
+        print(f"OK {TICKER}: {len(rows)} rows {rows[0][0]} -> {rows[-1][0]}, {len(divs)} dividend events")
+        print(f"meta: {meta}")
+    status["watch"] = fetch_watch()
     write_json(DATA / "status.json", status)
-    print(f"OK {TICKER}: {len(rows)} rows {rows[0][0]} -> {rows[-1][0]}, {len(divs)} dividend events")
-    print(f"meta: {meta}")
+    if errs:
+        sys.exit(2)
+
+
+def fetch_watch():
+    """Pull each watched fund; keep its last-good file on any failure.
+    Returns {symbol: status} for status.json. Never raises, never exits."""
+    out = {}
+    WATCH_DIR.mkdir(exist_ok=True)
+    for sym, spec in WATCH.items():
+        path = WATCH_DIR / f"{sym}.json"
+        old = load_json(path)
+        old_rows = old["rows"] if old else []
+        try:
+            rows, divs, meta = fetch_frame(sym)
+            errs = guard.validate_watch_frame(rows, old_rows, meta, spec["currency"])
+        except Exception as e:
+            rows, divs, meta, errs = [], [], {}, [f"fetch failed: {e}"]
+        if errs:
+            out[sym] = {"guard": "fail: " + "; ".join(errs[:4]), "kept_rows": len(old_rows),
+                        "last_price_date": old_rows[-1][0] if old_rows else None}
+            print(f"WATCH {sym} GUARD FAIL — kept last-good:\n  " + "\n  ".join(errs), file=sys.stderr)
+            continue
+        write_json(path, {"ticker": sym, "label": spec["label"],
+                          "cols": ["date", "open", "high", "low", "close", "adjclose"],
+                          "rows": rows, "dividend_events": len(divs)})
+        out[sym] = {"guard": "pass", "rows": len(rows), "last_price_date": rows[-1][0], "meta": meta}
+        print(f"WATCH OK {sym}: {len(rows)} rows {rows[0][0]} -> {rows[-1][0]}  meta: {meta}")
+    return out
 
 
 if __name__ == "__main__":

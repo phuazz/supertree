@@ -152,6 +152,8 @@ body { background:var(--bg); color:var(--t1); font-family:var(--sans); line-heig
 .htable td { text-align:right; padding:11px 10px; border-bottom:1px solid var(--bd); font-family:var(--mono); color:var(--t2); }
 .htable td.name { font-family:var(--sans); font-weight:600; color:var(--t1); }
 .htable tr:last-child td { border-bottom:none; }
+.htable tr.watch td { color:var(--t3-text); }
+.wtag { font-family:var(--sans); font-size:11px; font-weight:600; color:var(--b-text); background:var(--b-bg); border-radius:999px; padding:2px 8px; margin-left:4px; }
 /* 13px cells are small text -> -text variants per contrast rule */
 .htable td.pos { color:var(--g-text); } .htable td.neg { color:var(--r-text); }
 .tbl-note { font-size:12.5px; color:var(--t3-text); margin-top:12px; }
@@ -863,7 +865,7 @@ function renderTiles(p){
 }
 
 /* (e) holdings table — multi-position-ready; today it renders one line. */
-function renderHoldings(p){
+function renderHoldings(p, s){
   const buys = p.events.buys;
   const cost = buys.reduce((a, b) => a + b.cost, 0);
   const prov = buys.some(b => b.provisional);
@@ -886,9 +888,35 @@ function renderHoldings(p){
       '<td class="' + cls + '">' + pct(ret) + '</td>' +
     '</tr>';
   }).join('');
-  document.getElementById('cl-holdings').innerHTML = head + body + '</tbody></table></div>' +
+  // watched funds: 0 units, a price and a like-for-like comparison, never valued
+  const watch = p.watch || [], wst = (s && s.watch) || {};
+  const watchRows = watch.map(w => {
+    const ok = !wst[w.ticker] || String(wst[w.ticker].guard).indexOf('pass') === 0;
+    return '<tr class="watch">' +
+      '<td class="name">' + w.ticker + ' <span class="wtag">watching</span></td>' +
+      '<td>0</td><td>—</td><td>—</td>' +
+      '<td>' + (w.has_data ? 'S$' + w.last_close.toFixed(3) + (ok ? '' : ' <span class="prov">old</span>') : '—') + '</td>' +
+      '<td>' + sgd(0) + '</td><td>—</td></tr>';
+  }).join('');
+  const watchNotes = watch.map(w => {
+    const st = wst[w.ticker], failing = st && String(st.guard).indexOf('pass') !== 0;
+    const name = '<b>' + w.ticker + '</b>' + (w.label ? ' (' + w.label + ')' : '');
+    if (!w.has_data)
+      return name + ' is on the watch list. Its prices arrive with the next nightly refresh' +
+             (failing ? ' — the last try did not work, so nothing is shown yet.' : '.');
+    const sl = w.since_listing, oy = w.one_year;
+    const cmp = (x, label) => label + ' it grew <b>' + pct(x.watch) + '</b>; ' + p.ticker +
+      ', with its dividends counted, grew <b>' + pct(x.holding) + '</b> over the same days';
+    return name + ' is a fund we are watching, not one we own — 0 units, so it is not in “my money”. ' +
+      'It keeps its dividends inside the fund instead of paying them out. ' +
+      (sl ? cmp(sl, 'Since ' + fmtDate(sl.from)) + '. ' : '') +
+      (oy ? cmp(oy, 'Over the last year') + '. ' : '') +
+      (failing ? 'Its price feed is not working right now, so these numbers are from ' + fmtDate(w.last_date) + '.' : '');
+  }).join(' ');
+  document.getElementById('cl-holdings').innerHTML = head + body + watchRows + '</tbody></table></div>' +
     '<p class="tbl-note">Return here is price only — value against cost. Dividends of <b>' + sgd(p.money.dividends_received) +
-    '</b> are on top of this; the total-return chart above includes them.</p>';
+    '</b> are on top of this; the total-return chart above includes them.</p>' +
+    (watchNotes ? '<p class="tbl-note">' + watchNotes + '</p>' : '');
 }
 
 /* (f) since-2008 context on ADJUSTED close (dividends included), labelled. */
@@ -934,7 +962,7 @@ function renderCloser(data){
   renderDrawdown(p);
   renderTrend(p);
   renderTiles(p);
-  renderHoldings(p);
+  renderHoldings(p, data.status);
   renderHistory(edu);
 }
 

@@ -43,9 +43,11 @@ def _d(iso):
     return date.fromisoformat(iso)
 
 
-def build(prices, ledger_rows):
+def build(prices, ledger_rows, watch=None):
     """prices: {'cols': [...], 'rows': [[date,o,h,l,close,adjclose],...]}
     ledger_rows: list of transaction dicts, chronological.
+    watch: optional list of price frames for funds shown with 0 units
+    (compared, never valued — they do not touch money, risk or milestones).
     Returns (portfolio_dict, education_dict). Raises EngineError on any
     inconsistency — a wrong number shown confidently is the failure mode."""
     rows = prices["rows"]
@@ -157,9 +159,45 @@ def build(prices, ledger_rows):
         "projection": (_projection(value_now, as_of, fp, cagr=PROJECTION_ASSUMED_CAGR)
                        if (fp := _funnel_params(rows)) else None),
         "milestones": milestones,
+        "watch": [_watch(w, rows) for w in (watch or [])],
     }
     education = _education(rows)
     return portfolio, education
+
+
+def _watch(frame, hold_rows):
+    """A watched fund: last price and growth, each against the HOLDING over the
+    exact same days. Both sides use ADJUSTED close (dividends included) so an
+    accumulating fund is compared like for like with a paying-out one. Not a
+    valuation: units are 0 and nothing here enters money, risk or milestones."""
+    rows = frame.get("rows") or []
+    out = {"ticker": frame.get("ticker"), "label": frame.get("label"), "units": 0,
+           "has_data": bool(rows)}
+    if not rows:
+        return out
+    first_d, last_d = rows[0][0], rows[-1][0]
+    out.update({"first_date": first_d, "last_date": last_d, "last_close": rows[-1][4]})
+    w_adj = {r[0]: r[5] for r in rows}
+    h_adj = {r[0]: r[5] for r in hold_rows}
+
+    def window(start_iso):
+        # common trading days of both funds inside [start, last]
+        common = [d for d in (r[0] for r in rows) if d >= start_iso and d in h_adj]
+        if len(common) < 2:
+            return None
+        a, b = common[0], common[-1]
+        return {"from": a, "to": b,
+                "watch": round(w_adj[b] / w_adj[a] - 1.0, 6),
+                "holding": round(h_adj[b] / h_adj[a] - 1.0, 6)}
+
+    out["since_listing"] = window(first_d)
+    ld = _d(last_d)
+    try:
+        yr_ago = date(ld.year - 1, ld.month, ld.day).isoformat()  # months 1-indexed in ctor
+    except ValueError:  # 29 Feb -> 28 Feb a year earlier
+        yr_ago = date(ld.year - 1, ld.month, 28).isoformat()
+    out["one_year"] = window(yr_ago) if first_d <= yr_ago else None
+    return out
 
 
 def _units_before(txns, iso_date):

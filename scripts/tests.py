@@ -401,6 +401,40 @@ def test_price_patches():
           patches.validate_patch(dict(p, date="2027-01-02")) != [])
 
 
+def test_watch_fund():
+    # Holding: steady 1%/day on adjclose over 6 days. Watch fund lists on day 3.
+    days = ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09"]
+    hold = mkrows([(d, 10.0) for d in days], [10.0 * 1.01 ** i for i in range(6)])
+    wrows = mkrows([(d, 5.0 * 1.02 ** i) for i, d in enumerate(days[2:])])
+    w = engine._watch({"ticker": "GAB.SI", "label": "x", "rows": wrows}, hold)
+    sl = w["since_listing"]
+    check("watch: compared over the SAME days (from listing to last)",
+          sl["from"] == "2026-01-06" and sl["to"] == "2026-01-09", f"{sl}")
+    check("watch: fund growth from its own adjusted close", abs(sl["watch"] - (1.02 ** 3 - 1)) < 1e-6)
+    check("watch: holding growth over that window, dividends in (adjclose)",
+          abs(sl["holding"] - (1.01 ** 3 - 1)) < 1e-6, f"{sl['holding']}")
+    check("watch: under a year of history -> no one-year figure", w["one_year"] is None)
+    check("watch: 0 units, never a valuation", w["units"] == 0 and "value" not in w)
+    empty = engine._watch({"ticker": "GAB.SI", "rows": []}, hold)
+    check("watch: no prices yet -> has_data False, nothing else claimed",
+          empty["has_data"] is False and "last_close" not in empty)
+    # a watched fund must not move a single money figure
+    ledger = [{"date": days[0], "type": "BUY", "ticker": "ES3.SI", "units": 10,
+               "price": 10.0, "fees": 1.0, "provisional": False}]
+    prices = {"ticker": "ES3.SI", "cols": [], "rows": hold}
+    a, _ = engine.build(prices, ledger)
+    b, _ = engine.build(prices, ledger, watch=[{"ticker": "GAB.SI", "rows": wrows}])
+    check("watch: adding a watched fund leaves money, position and risk unchanged",
+          a["money"] == b["money"] and a["position"] == b["position"] and a["risk"] == b["risk"])
+    # guard: identity + keep-last-good
+    ok = guard.validate_watch_frame(wrows, [], {"currency": "SGD"}, "SGD")
+    check("watch guard: good SGD frame passes", ok == [], f"{ok}")
+    check("watch guard: wrong currency fails (wrong symbol)",
+          any("currency" in e for e in guard.validate_watch_frame(wrows, [], {"currency": "USD"}, "SGD")))
+    check("watch guard: a shorter pull than last-good fails",
+          guard.validate_watch_frame(wrows[:2], wrows, {"currency": "SGD"}, "SGD") != [])
+
+
 def test_real_data_smoke():
     import json
     root = Path(__file__).resolve().parents[1]
@@ -435,6 +469,11 @@ def test_real_data_smoke():
           tr["sma_window"] == 200 and tr["sma_now"] is not None)
     check("real: trend above/below matches close vs sma",
           tr["above"] == (tr["close_now"] >= tr["sma_now"]))
+    wf = root / "data" / "watch" / "GAB.SI.json"
+    if wf.exists():
+        wd = json.loads(wf.read_text(encoding="utf-8"))
+        check("real: watched GAB.SI frame passes the row guard",
+              guard.validate_price_rows(wd["rows"]) == [], str(guard.validate_price_rows(wd["rows"])[:3]))
     fz = p["projection"]
     check("real: funnel starts from the first row of history (conservative start)",
           fz["history_start"] == prices["rows"][0][0] == edu["history_start"])

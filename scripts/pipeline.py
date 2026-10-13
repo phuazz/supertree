@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 DOCS = ROOT / "docs"
 MARKER = "window.__DATA__ = null;"
+WATCH_SYMBOLS = ["GAB.SI"]  # keep in step with fetch.WATCH (fetch imports yfinance, so not imported here)
 
 
 def read_json(p):
@@ -44,7 +45,13 @@ def main():
     if errs:
         sys.exit("LEDGER GUARD FAIL:\n  " + "\n  ".join(errs))
 
-    portfolio, education = engine.build(prices, ledger)
+    # watched funds: 0 units, compared on the page; a missing file just means
+    # its first nightly pull has not happened yet (the page says so)
+    watch = []
+    for sym in WATCH_SYMBOLS:
+        f = DATA / "watch" / f"{sym}.json"
+        watch.append(read_json(f) if f.exists() else {"ticker": sym, "label": None, "rows": []})
+    portfolio, education = engine.build(prices, ledger, watch=watch)
     write_json(DATA / "portfolio.json", portfolio)
     write_json(DATA / "education.json", education)
 

@@ -140,3 +140,15 @@ def validate_ledger(rows, price_lookup):
             if not (ok_dps or ok_amt):
                 errs.append(f"{tag}: DIV needs dps or amount > 0")
     return errs
+
+
+def validate_watch_frame(rows, old_rows, meta, expect_currency):
+    """A watched (0-unit) fund's price frame: the same row and keep-last-good
+    checks as the holding, plus an identity check — Yahoo must report the
+    expected currency, so a mistyped or re-pointed symbol fails loudly
+    instead of drawing some other instrument's prices."""
+    errs = validate_price_rows(rows) + validate_replacement(rows, old_rows)
+    cur = (meta or {}).get("currency")
+    if cur != expect_currency:
+        errs.append(f"currency {cur!r} != expected {expect_currency!r} — wrong symbol?")
+    return errs
