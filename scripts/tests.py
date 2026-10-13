@@ -435,6 +435,73 @@ def test_watch_fund():
           guard.validate_watch_frame(wrows[:2], wrows, {"currency": "SGD"}, "SGD") != [])
 
 
+def test_switch_between_funds():
+    # Fund T (main calendar) and fund U. Hand-checkable story:
+    #  d0 BUY 10 T @10 + 1 fee = 101 new money
+    #  d1 DIV 10 T x 0.5 = 5 cash
+    #  d2 SELL 10 T @12 = 120 cash  -> cash 125
+    #  d2 BUY 20 U @8 = 160, from_cash all (125) -> 35 new money
+    #  money put in = 101 + 35 = 136; U closes 8.5 on d3 -> value 170; outcome 34
+    days = ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07"]
+    prices = {"ticker": "T", "cols": [], "rows": mkrows([(d, c) for d, c in zip(days, [10.0, 11.0, 12.0, 12.5])])}
+    u_rows = mkrows([("2026-01-06", 8.0), ("2026-01-07", 8.5)])
+    frames = [{"ticker": "U", "rows": u_rows}]
+    ledger = [
+        {"date": days[0], "type": "BUY", "ticker": "T", "units": 10, "price": 10.0, "fees": 1.0, "provisional": False},
+        {"date": days[1], "type": "DIV", "ticker": "T", "units": 10, "dps": 0.5, "amount": None, "provisional": False},
+        {"date": days[2], "type": "SELL", "ticker": "T", "units": 10, "price": 12.0, "fees": 0, "provisional": False},
+        {"date": days[2], "type": "BUY", "ticker": "U", "units": 20, "price": 8.0, "fees": 0,
+         "from_cash": "all", "provisional": False},
+    ]
+    p, _ = engine.build(prices, ledger, frames=frames)
+    m, b = p["money"], p["events"]["buys"][-1]
+    check("switch: the switch buy takes all cash (sale 120 + dividend 5)",
+          b["from_cash"] == 125.0 and b["new_money"] == 35.0, f"{b}")
+    check("switch: money put in = first buy + new money only (101 + 35)", m["invested"] == 136.0, f"{m}")
+    check("switch: value from the NEW fund's own raw close (20 x 8.5)",
+          p["position"]["value"] == 170.0 and [h["ticker"] for h in p["position"]["holdings"]] == ["U"])
+    check("switch: cash ends at 0, outcome = 170 + 0 - 136 = 34",
+          m["cash"] == 0.0 and m["total_outcome"] == 34.0, f"{m}")
+    check("switch: dividends still counted once (5), market gain = outcome - dividends",
+          m["dividends_received"] == 5.0 and m["market_gain"] == 29.0, f"{m}")
+    check("switch: outcome series = holdings + cash on each day (incl. the switch day)",
+          p["series"]["outcome"] == [100.0, 115.0, 160.0, 170.0], f'{p["series"]["outcome"]}')
+    check("switch: money-in line steps only by new money",
+          p["series"]["invested"] == [101.0, 101.0, 136.0, 136.0], f'{p["series"]["invested"]}')
+    # a fund that does not trade one day keeps its last close (carry forward)
+    gap, _ = engine.build({"ticker": "T", "cols": [], "rows": prices["rows"] + mkrows([("2026-01-08", 13.0)])},
+                       ledger, frames=frames)
+    check("switch: a day without a trade in U values it at its last close",
+          gap["position"]["holdings"][0]["last_close"] == 8.5 and
+          gap["position"]["holdings"][0]["last_price_date"] == "2026-01-07")
+    # loud failures
+    greedy = ledger[:3] + [dict(ledger[3], from_cash=500)]
+    try:
+        engine.build(prices, greedy, frames=frames)
+        check("switch: taking more cash than exists is refused", False)
+    except engine.EngineError:
+        check("switch: taking more cash than exists is refused", True)
+    try:
+        engine.build(prices, ledger)  # no price frame for U
+        check("switch: a fund with no prices is refused", False)
+    except engine.EngineError:
+        check("switch: a fund with no prices is refused", True)
+    # guard: each fill checked against ITS OWN fund's day range
+    lk = {r[0]: r for r in prices["rows"]}
+    fl = {"U": {r[0]: r for r in u_rows}}
+    check("guard: switch ledger passes", guard.validate_ledger(ledger, lk, fl, "T") == [],
+          str(guard.validate_ledger(ledger, lk, fl, "T")))
+    wrong = ledger[:3] + [dict(ledger[3], price=12.0)]  # 12 is inside T's range, outside U's
+    check("guard: a fill outside its own fund's range fails (not checked against another fund)",
+          any("U" in e for e in guard.validate_ledger(wrong, lk, fl, "T")))
+    check("guard: a fund with no price data fails clearly",
+          any("no price data for U" in e for e in guard.validate_ledger(ledger, lk, {}, "T")))
+    over = ledger + [{"date": days[3], "type": "SELL", "ticker": "T", "units": 1, "price": 12.5,
+                      "fees": 0, "provisional": False}]
+    check("guard: units tracked per fund (selling T after it is gone fails)",
+          any("units of T" in e for e in guard.validate_ledger(over, lk, fl, "T")))
+
+
 def test_real_data_smoke():
     import json
     root = Path(__file__).resolve().parents[1]
@@ -452,19 +519,26 @@ def test_real_data_smoke():
         pdates = [x["date"] for x in json.loads(ppf.read_text(encoding="utf-8"))["rows"]]
         check("real: every patched session is in the price index",
               all(d in lookup for d in pdates), str([d for d in pdates if d not in lookup]))
-    check("real: ledger passes guard", guard.validate_ledger(ledger, lookup) == [],
-          str(guard.validate_ledger(ledger, lookup)[:3]))
-    p, edu = engine.build(prices, ledger)
-    check("real: value = units x last close",
-          abs(p["position"]["value"] -
-              p["position"]["units"] * p["position"]["last_close"]) < 1e-6)
+    frames = [json.loads(f.read_text(encoding="utf-8"))
+              for f in sorted((root / "data" / "watch").glob("*.json"))]
+    fl = {f["ticker"]: {r[0]: r for r in f["rows"]} for f in frames if f.get("rows")}
+    lerrs = guard.validate_ledger(ledger, lookup, fl, prices["ticker"])
+    check("real: ledger passes guard (each fill inside its own fund's day range)", lerrs == [], str(lerrs[:3]))
+    p, edu = engine.build(prices, ledger, watch=frames, frames=frames)
+    hs = p["position"]["holdings"]
+    check("real: value = sum over funds of units x RAW last close",
+          abs(p["position"]["value"] - sum(h["units"] * h["last_close"] for h in hs)) < 0.01 and
+          all(abs(h["value"] - h["units"] * h["last_close"]) < 0.01 for h in hs))
+    m = p["money"]
+    check("real: outcome = holdings + cash - money put in (double-count guard)",
+          abs(m["total_outcome"] - (p["position"]["value"] + m["cash"] - m["invested"])) < 0.02)
     expected_prov = any(bool(t.get("provisional")) for t in ledger)
     check("real: provisional flag matches ledger rows", p["provisional"] is expected_prov)
     check("real: education history starts 2008 (Yahoo depth)",
           edu["history_start"].startswith("2008"))
     tr = p["trend"]
-    check("real: trend close_now == position last_close (raw close)",
-          tr["close_now"] == p["position"]["last_close"])
+    check("real: trend close_now == main fund's last RAW close",
+          tr["close_now"] == prices["rows"][-1][4])
     check("real: trend sma is 200-trading-day and defined (deep history)",
           tr["sma_window"] == 200 and tr["sma_now"] is not None)
     check("real: trend above/below matches close vs sma",

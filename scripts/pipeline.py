@@ -40,18 +40,20 @@ def main():
     status = read_json(DATA / "status.json")
     ledger = read_json(DATA / "transactions.json")["transactions"]
 
+    # other funds' price frames (GAB.SI ...): held funds are valued from them,
+    # and any not held are shown as watched. A missing file means the first
+    # nightly pull has not happened yet.
+    frames = []
+    for sym in WATCH_SYMBOLS:
+        f = DATA / "watch" / f"{sym}.json"
+        frames.append(read_json(f) if f.exists() else {"ticker": sym, "label": None, "rows": []})
     lookup = {row[0]: row for row in prices["rows"]}
-    errs = guard.validate_ledger(ledger, lookup)
+    fund_lookups = {f["ticker"]: {r[0]: r for r in f["rows"]} for f in frames if f.get("rows")}
+    errs = guard.validate_ledger(ledger, lookup, fund_lookups, prices["ticker"])
     if errs:
         sys.exit("LEDGER GUARD FAIL:\n  " + "\n  ".join(errs))
 
-    # watched funds: 0 units, compared on the page; a missing file just means
-    # its first nightly pull has not happened yet (the page says so)
-    watch = []
-    for sym in WATCH_SYMBOLS:
-        f = DATA / "watch" / f"{sym}.json"
-        watch.append(read_json(f) if f.exists() else {"ticker": sym, "label": None, "rows": []})
-    portfolio, education = engine.build(prices, ledger, watch=watch)
+    portfolio, education = engine.build(prices, ledger, watch=frames, frames=frames)
     write_json(DATA / "portfolio.json", portfolio)
     write_json(DATA / "education.json", education)
 

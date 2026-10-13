@@ -9,7 +9,7 @@
       "price": 3.803,
       "fees": 2.33,
       "provisional": false,
-      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2024-11-28 11:02 SGT, settle 2024-12-02. Amount S$380.30 + fees (exch 0.15, comm 0.99, platform 1.00, GST 0.19) = cash S$382.63. First of three buys making up the 400-unit position."
+      "note": "Confirmed from contract note: SGX ES3.SI, trade 2024-11-28 11:02 SGT, settle 2024-12-02. Amount S$380.30 + fees (exch 0.15, comm 0.99, platform 1.00, GST 0.19) = cash S$382.63. First of three buys making up the 400-unit position."
     },
     {
       "date": "2025-01-24",
@@ -19,7 +19,7 @@
       "price": 3.885,
       "fees": 2.34,
       "provisional": false,
-      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2025-01-24 17:04 SGT, settle 2025-01-28. Amount S$388.50 + fees (exch 0.16, comm 0.99, platform 1.00, GST 0.19) = cash S$390.84. Second buy."
+      "note": "Confirmed from contract note: SGX ES3.SI, trade 2025-01-24 17:04 SGT, settle 2025-01-28. Amount S$388.50 + fees (exch 0.16, comm 0.99, platform 1.00, GST 0.19) = cash S$390.84. Second buy."
     },
     {
       "date": "2025-02-12",
@@ -27,7 +27,7 @@
       "ticker": "ES3.SI",
       "units": 200,
       "dps": 0.091,
-      "amount": 18.20,
+      "amount": 18.2,
       "provisional": false,
       "note": "Cash dividend held, not reinvested (assumption A2). Only 200 units held pre-ex (the 2024-11-28 + 2025-01-24 buys; the 200-unit 2025-03-13 buy came after). No broker statement available; amount = ex-date dps 0.091 x 200 units, treated as final."
     },
@@ -39,7 +39,7 @@
       "price": 3.827,
       "fees": 2.51,
       "provisional": false,
-      "note": "Confirmed from Tiger contract note: SGX ES3.SI, trade 2025-03-13 09:12 SGT, settle 2025-03-17. Amount S$765.40 + fees (exch 0.31, comm 0.99, platform 1.00, GST 0.21) = cash S$767.91. Third buy; brings position to 400 units, blended cost 3.85345."
+      "note": "Confirmed from contract note: SGX ES3.SI, trade 2025-03-13 09:12 SGT, settle 2025-03-17. Amount S$765.40 + fees (exch 0.31, comm 0.99, platform 1.00, GST 0.21) = cash S$767.91. Third buy; brings position to 400 units, blended cost 3.85345."
     },
     {
       "date": "2025-08-12",
@@ -47,7 +47,7 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.089,
-      "amount": 35.60,
+      "amount": 35.6,
       "provisional": false,
       "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.089 x 400 units, treated as final."
     },
@@ -57,9 +57,30 @@
       "ticker": "ES3.SI",
       "units": 400,
       "dps": 0.085,
-      "amount": 34.00,
+      "amount": 34.0,
       "provisional": false,
       "note": "Cash dividend held, not reinvested (assumption A2). No broker statement available; amount = ex-date dps 0.085 x 400 units, treated as final."
+    },
+    {
+      "date": "2026-10-13",
+      "type": "SELL",
+      "ticker": "ES3.SI",
+      "units": 400,
+      "price": 5.528,
+      "fees": 0,
+      "provisional": true,
+      "note": "Switch out of ES3 into GAB. Priced at ES3's level at the time of the GAB purchase (about 15:07 SGT). PLACEHOLDER: 5.528 is the 13 Oct close, standing in until that price is confirmed; then set price and provisional:false. No fees: the switch costs this account nothing."
+    },
+    {
+      "date": "2026-10-13",
+      "type": "BUY",
+      "ticker": "GAB.SI",
+      "units": 800,
+      "price": 5.248,
+      "fees": 0,
+      "from_cash": "all",
+      "provisional": false,
+      "note": "Switch into GAB (Amova Singapore STI ETF, accumulating class): 800 units filled at 5.248 on SGX, 15:07 SGT. Paid with all cash on hand (the ES3 switch-out plus dividends held as cash); the rest is new money put in. Commission (S$3.66) was paid separately, so it is not part of this account's money."
     }
   ]
 }

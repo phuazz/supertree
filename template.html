@@ -393,8 +393,23 @@ function renderPills(p, s){
   else            pills.push('<span class="pill live">data fresh</span>');
   if (p.provisional) pills.push('<span class="pill stale">provisional</span>');
   document.getElementById('pills').innerHTML = pills.join('');
-  document.getElementById('prov-banner').hidden = !p.provisional;
+  const pb = document.getElementById('prov-banner');
+  pb.hidden = !p.provisional;
+  if (p.provisional){  // name exactly which rows are still placeholders
+    const ev = p.events, items = [];
+    ev.buys.filter(x => x.provisional).forEach(x => items.push('the ' + fmtDate(x.date) + ' buy of ' + x.ticker));
+    (ev.sells || []).filter(x => x.provisional).forEach(x => items.push('the ' + fmtDate(x.date) + ' switch out of ' + x.ticker));
+    ev.divs.filter(x => x.provisional).forEach(x => items.push('the ' + fmtDate(x.date) + ' dividend'));
+    pb.textContent = 'Some of these numbers are provisional until a placeholder is replaced with the real figure: ' +
+      (items.length ? items.join(', ') : 'a ledger row') + '.';
+  }
 }
+
+function heldNames(p){  // "GAB" or "ES3 and GAB" — tickers without the exchange suffix
+  return p.position.holdings.map(h => h.ticker.replace(/\.SI$/, '')).join(' and ') || p.ticker.replace(/\.SI$/, '');
+}
+function divsUsed(p){ return p.money.cash < p.money.dividends_received - 0.005; }  // dividend cash went into a switch
+function lastSell(p){ const s = p.events.sells || []; return s.length ? s[s.length - 1] : null; }
 
 function renderHeadline(p){
   const m = p.money;
@@ -402,12 +417,14 @@ function renderHeadline(p){
   let body;
   if (grew){
     body = 'Yes. You put in <b>' + sgd0(m.invested) + '</b> and your ETF is now worth <b>' + sgd0(p.position.value) + '</b>. ' +
-           'The companies also paid you <b>' + sgd(m.dividends_received) + '</b> in cash. ' +
+           (divsUsed(p)
+             ? 'The companies also paid you <b>' + sgd(m.dividends_received) + '</b> in cash along the way, which went into your ETF when you switched. '
+             : 'The companies also paid you <b>' + sgd(m.dividends_received) + '</b> in cash. ') +
            'All together, that is <b>' + sgd0(m.total_outcome) + ' more</b> than you started with — ' +
            '<b>' + pct(m.total_outcome_pct) + '</b> since ' + fmtDate(p.position.first_buy_date) + '.';
   } else {
     body = 'Not right now. You put in <b>' + sgd0(m.invested) + '</b> and everything together is worth <b>' +
-           sgd0(p.position.value + m.dividends_received) + '</b> — that is <b>' + sgd0(m.total_outcome) + ' less</b>. ' +
+           sgd0(p.position.value + m.cash) + '</b> — that is <b>' + sgd0(m.total_outcome) + ' less</b>. ' +
            'This happens sometimes, and it is normal. The weather card below explains what to do. Mostly: wait.';
   }
   document.getElementById('headline').innerHTML =
@@ -428,7 +445,9 @@ function renderKpis(p){
   const m = p.money;
   const sign = v => v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
   document.getElementById('kpis').innerHTML =
-    kpi('My money today', sgd(p.position.value), '', p.position.units.toLocaleString('en-US') + ' units of ' + p.ticker) +
+    kpi('My money today', sgd(p.position.value + m.cash), '',
+        p.position.holdings.map(h => h.units.toLocaleString('en-US') + ' units of ' + h.ticker).join(' + ') +
+        (m.cash > 0.005 ? ' + ' + sgd(m.cash) + ' cash' : '')) +
     kpi('Money I put in', sgd(m.invested)) +
     kpi('The market added', sgd(m.market_gain), sign(m.market_gain)) +
     kpi('Companies paid me', sgd(m.dividends_received), sign(m.dividends_received)) +
@@ -475,6 +494,7 @@ function drawJourney(p, key){
   const vAt = {};
   s.dates.forEach((d, i) => vAt[d] = s.value[i]);
   const buys = p.events.buys.filter(b => b.date >= s.dates[0]);
+  const sells = (p.events.sells || []).filter(x => x.date >= s.dates[0]);
   const divs = p.events.divs.filter(x => x.date >= s.dates[0]);
   // Tick spacing follows the window span so short windows do not collapse to one label
   const spanDays = daysBetween(s.dates[0], s.dates[s.dates.length - 1]);
@@ -491,13 +511,23 @@ function drawJourney(p, key){
     { x: buys.map(b => b.date), y: buys.map(b => vAt[b.date]), name: 'I bought',
       mode: 'markers', marker: { symbol: 'triangle-up', size: 12, color: '#1a8754',
       line: { color: '#ffffff', width: 1.5 } },
-      customdata: buys.map(b => sgd0(b.cost)),
-      hovertemplate: 'I put in %{customdata}<extra></extra>' },
+      customdata: buys.map(b => b.from_cash > 0.005
+        ? 'Switched into ' + b.ticker + ': ' + sgd0(b.from_cash) + ' from the switch + ' + sgd0(b.new_money) + ' new money'
+        : 'I put in ' + sgd0(b.cost)),
+      hovertemplate: '%{customdata}<extra></extra>' },
     { x: divs.map(x => x.date), y: divs.map(x => vAt[x.date]), name: 'Companies paid me',
       mode: 'markers', marker: { symbol: 'circle', size: 10, color: '#0891b2',
       line: { color: '#ffffff', width: 1.5 } },
       customdata: divs.map(x => sgd(x.amount)),
-      hovertemplate: 'Companies paid me %{customdata} in cash<extra></extra>' }
+      hovertemplate: 'Companies paid me %{customdata} in cash<extra></extra>' },
+    // the switch marker sits on the line just BEFORE the switch (the day before), so it
+    // does not collide with the buy marker / NOW pill at the new, higher value
+    { x: sells.map(x => x.date), y: sells.map(x => { const i = s.dates.indexOf(x.date); return i > 0 ? s.value[i - 1] : vAt[x.date]; }),
+      name: 'I switched funds',
+      mode: 'markers', marker: { symbol: 'diamond', size: 11, color: '#2563eb', line: { color: '#ffffff', width: 1.5 } },
+      customdata: sells.map(x => x.units.toLocaleString('en-US') + ' ' + x.ticker + ' switched out for ' + sgd0(x.proceeds) +
+                                 (x.provisional ? ' (provisional)' : '')),
+      hovertemplate: '%{customdata}<extra></extra>', showlegend: sells.length > 0 }
   ];
   const last = s.value[s.value.length - 1];
   // Y-range fits the window. The money-put-in line stays in view only while it
@@ -684,7 +714,9 @@ function renderDivs(p){
   }
   document.getElementById('divcard').innerHTML =
     '<div class="card-title">Cash the companies paid you</div>' + rows +
-    '<div class="foot">This cash is yours, on top of the green line. Companies usually pay about twice a year.</div>';
+    '<div class="foot">' + (divsUsed(p) && lastSell(p)
+      ? 'This cash went into your ETF when you switched funds on ' + fmtDate(lastSell(p).date) + ', so it is now inside the green line.'
+      : 'This cash is yours, on top of the green line. Companies usually pay about twice a year.') + '</div>';
 }
 
 function renderLearn(p){
@@ -701,7 +733,7 @@ function renderLearn(p){
     : 'You own a small slice of 30 companies, and your first payment is on its way.';
   const cards = [
     ['What is an ETF?',
-     'ETF is short for <b>exchange-traded fund</b> — a basket that holds many companies, bought in one go. Your basket is called <b>ES3</b>. It holds 30 of Singapore’s biggest listed companies at once, so you never depend on just one.'],
+     'ETF is short for <b>exchange-traded fund</b> — a basket that holds many companies, bought in one go. Your basket is called <b>' + heldNames(p) + '</b>. It holds 30 of Singapore’s biggest listed companies at once, so you never depend on just one.'],
     ['What is the STI?',
      'The <b>Straits Times Index</b> is Singapore’s main share-market scoreboard. It follows 30 large companies — names like DBS, Singtel and Singapore Airlines. When the news says the Singapore market rose today, this is the number they mean. Your ETF simply copies it.'],
     ['Why do prices wiggle every day?', wiggle],
@@ -714,19 +746,29 @@ function renderLearn(p){
 
 function renderCheck(p, edu, s){
   const r = p.risk, ms = p.milestones;
+  // every trade in date order: buys (with any part paid from cash) and switch-outs
   const nb = p.events.buys.length;
-  const buyRows = p.events.buys.map((b, i) => {
+  const trades = p.events.buys.map((b, i) => ({ d: b.date, k: 1, row: (() => {
     const fee = Math.round((b.cost - b.units * b.price) * 100) / 100;  // cost includes fees; recover the fee
-    return [
-      'money put in' + (nb > 1 ? ' (' + (i + 1) + ' of ' + nb + ')' : ''),
-      fmtDate(b.date) + ' — ' + b.units.toLocaleString('en-US') + ' × ' + sgdp(b.price) +
-        (fee ? ' + ' + sgd(fee) + ' fee' : '') + ' = ' + sgd(b.cost) + (b.provisional ? ' (provisional)' : '')
-    ];
-  });
+    return ['bought' + (nb > 1 ? ' (' + (i + 1) + ' of ' + nb + ')' : ''),
+      fmtDate(b.date) + ' — ' + b.units.toLocaleString('en-US') + ' ' + b.ticker + ' × ' + sgdp(b.price) +
+        (fee ? ' + ' + sgd(fee) + ' fee' : '') + ' = ' + sgd(b.cost) +
+        (b.from_cash > 0.005 ? ' (' + sgd(b.from_cash) + ' from cash + ' + sgd(b.new_money) + ' new money)' : '') +
+        (b.provisional ? ' (provisional)' : '')];
+  })() })).concat((p.events.sells || []).map(x => ({ d: x.date, k: 0, row: ['switched out',
+      fmtDate(x.date) + ' — ' + x.units.toLocaleString('en-US') + ' ' + x.ticker + ' × ' + sgdp(x.price) + ' = ' +
+      sgd(x.proceeds) + ' into cash' + (x.provisional ? ' (provisional)' : '')] })))
+    .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : a.k - b.k)  // same day: switch-out first
+    .map(t => t.row);
+  const held = p.position.holdings.map(h => [h.ticker + ': units x last close',
+    h.units.toLocaleString('en-US') + ' x ' + h.last_close + ' = ' + sgd(h.value) +
+    (h.last_price_date !== p.as_of ? ' (price from ' + fmtDate(h.last_price_date) + ')' : '')]);
   const rows = [
     ['as of', p.as_of],
-    ...buyRows,
-    ['units x last close', p.position.units.toLocaleString('en-US') + ' x ' + p.position.last_close + ' = ' + sgd(p.position.value)],
+    ...trades,
+    ['money put in (new money only)', sgd(p.money.invested)],
+    ...held,
+    ['cash', sgd(p.money.cash)],
     ['money-weighted return', p.mwr_annualised == null ? 'n/a' : pct(p.mwr_annualised) + ' annualised'],
     ['biggest fall (my money)', pct(r.max_dd) + ' (' + fmtDate(r.max_dd_peak) + ' to ' + fmtDate(r.max_dd_trough) + (r.max_dd_recovered ? ', recovered ' + fmtDate(r.max_dd_recovered) : ', not yet recovered') + ')'],
     ['fall right now', pct(r.current_dd)],
@@ -866,12 +908,9 @@ function renderTiles(p){
 
 /* (e) holdings table — multi-position-ready; today it renders one line. */
 function renderHoldings(p, s){
-  const buys = p.events.buys;
-  const cost = buys.reduce((a, b) => a + b.cost, 0);
-  const prov = buys.some(b => b.provisional);
-  const holdings = [{ name: p.ticker, units: p.position.units, cost: cost,
-    avg: cost / p.position.units, provisional: prov,
-    last: p.position.last_close, value: p.position.value }];
+  const holdings = p.position.holdings.map(h => ({ name: h.ticker, units: h.units, cost: h.cost,
+    avg: h.avg_cost, provisional: h.provisional, last: h.last_close, value: h.value,
+    old: h.last_price_date !== p.as_of }));
   const head = '<div class="tscroll"><table class="htable"><thead><tr>' +
     ['Holding', 'Units', 'Avg cost', 'Cost', 'Last', 'Value', 'Return'].map(h => '<th>' + h + '</th>').join('') +
     '</tr></thead><tbody>';
@@ -883,7 +922,7 @@ function renderHoldings(p, s){
       '<td>' + h.units.toLocaleString('en-US') + '</td>' +
       '<td>' + sgd(h.avg) + '</td>' +
       '<td>' + sgd(h.cost) + (h.provisional ? ' <span class="prov">provisional</span>' : '') + '</td>' +
-      '<td>S$' + h.last.toFixed(3) + '</td>' +
+      '<td>S$' + h.last.toFixed(3) + (h.old ? ' <span class="prov">old</span>' : '') + '</td>' +
       '<td>' + sgd(h.value) + '</td>' +
       '<td class="' + cls + '">' + pct(ret) + '</td>' +
     '</tr>';
@@ -914,8 +953,13 @@ function renderHoldings(p, s){
       (failing ? 'Its price feed is not working right now, so these numbers are from ' + fmtDate(w.last_date) + '.' : '');
   }).join(' ');
   document.getElementById('cl-holdings').innerHTML = head + body + watchRows + '</tbody></table></div>' +
-    '<p class="tbl-note">Return here is price only — value against cost. Dividends of <b>' + sgd(p.money.dividends_received) +
-    '</b> are on top of this; the total-return chart above includes them.</p>' +
+    '<p class="tbl-note">' + (divsUsed(p) && lastSell(p)
+      ? 'Return here is price only — value against what the units cost. Part of that cost (<b>' +
+        sgd(p.events.buys.reduce((a, b) => a + b.from_cash, 0)) + '</b>) was paid from cash: the switch out of ' +
+        lastSell(p).ticker + ' on ' + fmtDate(lastSell(p).date) + ' plus <b>' + sgd(p.money.dividends_received) +
+        '</b> of dividends. The total-return chart above shows the whole journey.'
+      : 'Return here is price only — value against cost. Dividends of <b>' + sgd(p.money.dividends_received) +
+        '</b> are on top of this; the total-return chart above includes them.') + '</p>' +
     (watchNotes ? '<p class="tbl-note">' + watchNotes + '</p>' : '');
 }
 

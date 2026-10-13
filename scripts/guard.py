@@ -89,15 +89,19 @@ def validate_replacement(new_rows, old_rows):
     return errs
 
 
-def validate_ledger(rows, price_lookup):
-    """rows: transaction dicts, chronological. price_lookup: date -> price row.
+def validate_ledger(rows, price_lookup, fund_lookups=None, main_ticker=None):
+    """rows: transaction dicts, chronological. price_lookup: date -> price row of
+    the main fund (its dates ARE the SGX trading calendar). fund_lookups:
+    {ticker: date -> price row} for other funds traded in the ledger.
 
-    Every date must be a real SGX trading date (the price index IS the calendar).
-    Non-provisional BUY/SELL prices must lie within that day's low-high range.
+    Every date must be a real SGX trading date. Non-provisional BUY/SELL prices
+    must lie within THAT fund's low-high range on that day. Units are tracked
+    per fund, so a SELL can never exceed what is held of that fund.
     """
     errs = []
-    units_running = 0
+    held = {}
     last_date = None
+    fund_lookups = fund_lookups or {}
     for i, r in enumerate(rows):
         tag = f"ledger[{i}]"
         t = r.get("type")
@@ -111,6 +115,14 @@ def validate_ledger(rows, price_lookup):
         if last_date and d < last_date:
             errs.append(f"{tag}: rows not in chronological order")
         last_date = d
+        tk = r.get("ticker") or main_ticker
+        if tk in fund_lookups:
+            lookup = fund_lookups[tk]
+        elif main_ticker is None or tk == main_ticker:
+            lookup = price_lookup
+        else:  # never check one fund's fill against another fund's prices
+            errs.append(f"{tag}: no price data for {tk} to check this row against")
+            continue
         u = r.get("units")
         if not isinstance(u, int) or isinstance(u, bool) or u <= 0:
             errs.append(f"{tag}: units must be a positive integer")
@@ -124,15 +136,21 @@ def validate_ledger(rows, price_lookup):
             elif not isinstance(p, (int, float)) or p <= 0:
                 errs.append(f"{tag}: price not positive ({p!r})")
             elif not prov:
-                _d, _o, hi, lo, _c, _ac = price_lookup[d]
-                if not (lo <= p <= hi):
-                    errs.append(f"{tag}: price {p} outside {d} range {lo}-{hi}")
+                if d not in lookup:
+                    errs.append(f"{tag}: {tk} has no price row on {d} to check the fill against")
+                else:
+                    _d, _o, hi, lo, _c, _ac = lookup[d]
+                    if not (lo <= p <= hi):
+                        errs.append(f"{tag}: price {p} outside {tk} {d} range {lo}-{hi}")
             f = r.get("fees")
             if f is not None and (not isinstance(f, (int, float)) or f < 0):
                 errs.append(f"{tag}: fees must be >= 0")
-            units_running += u if t == "BUY" else -u
-            if units_running < 0:
-                errs.append(f"{tag}: cumulative units go negative")
+            fc = r.get("from_cash")
+            if fc is not None and fc != "all" and (not isinstance(fc, (int, float)) or fc < 0):
+                errs.append(f"{tag}: from_cash must be a number >= 0 or \"all\"")
+            held[tk] = held.get(tk, 0) + (u if t == "BUY" else -u)
+            if held[tk] < 0:
+                errs.append(f"{tag}: units of {tk} go negative")
         elif t == "DIV":
             dps, amt = r.get("dps"), r.get("amount")
             ok_dps = isinstance(dps, (int, float)) and dps > 0

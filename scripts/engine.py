@@ -43,123 +43,199 @@ def _d(iso):
     return date.fromisoformat(iso)
 
 
-def build(prices, ledger_rows, watch=None):
-    """prices: {'cols': [...], 'rows': [[date,o,h,l,close,adjclose],...]}
-    ledger_rows: list of transaction dicts, chronological.
-    watch: optional list of price frames for funds shown with 0 units
-    (compared, never valued — they do not touch money, risk or milestones).
+def build(prices, ledger_rows, watch=None, frames=None):
+    """prices: {'ticker', 'cols', 'rows': [[date,o,h,l,close,adjclose],...]} — the
+    main fund. Its rows are the TRADING CALENDAR and feed trend, funnel and the
+    since-2008 history (it has the deep history).
+    ledger_rows: transaction dicts, chronological. A row's "ticker" defaults to
+    the main fund's. BUY may carry "from_cash" (a number, or "all"): that part
+    is paid from the cash account; the rest is NEW money put in.
+    frames: price frames for other funds that may be held (e.g. GAB.SI).
+    watch: price frames for funds shown with 0 units (compared, never valued).
+
+    Money model (binding, see CLAUDE.md): valuation = units x RAW close per
+    fund. Dividends and sale proceeds land in a CASH account (assumption A2:
+    cash, not reinvested) and only leave it when a BUY says so. Money put in =
+    sum of new money. Total outcome = holdings value + cash - money put in.
+    Before any switch, cash == sum of dividends, so this is exactly
+    value + dividends - money in (the double-count guard).
     Returns (portfolio_dict, education_dict). Raises EngineError on any
     inconsistency — a wrong number shown confidently is the failure mode."""
     rows = prices["rows"]
     if not rows:
         raise EngineError("no price rows")
+    main_tk = prices["ticker"]
     dates = [r[0] for r in rows]
-    close = {r[0]: r[4] for r in rows}
     date_ix = {d: i for i, d in enumerate(dates)}
+    frame_rows = {main_tk: rows}
+    for f in (frames or []):
+        if f.get("rows"):
+            frame_rows[f["ticker"]] = f["rows"]
+    close_by = {k: {r[0]: r[4] for r in v} for k, v in frame_rows.items()}
 
-    txns = sorted(ledger_rows, key=lambda r: r["date"])
+    txns = [dict(t, ticker=t.get("ticker") or main_tk)
+            for t in sorted(ledger_rows, key=lambda r: r["date"])]  # stable: same-day order kept
     if not txns:
         raise EngineError("empty ledger")
     for t in txns:
         if t["date"] not in date_ix:
             raise EngineError(f"ledger date {t['date']} not in price index")
+        if t["ticker"] not in close_by:
+            raise EngineError(f"no price frame for {t['ticker']} (ledger row {t['date']})")
 
-    # --- reconstruct units + cashflows -----------------------------------
+    def trade_px(t):
+        if t.get("price") is not None:
+            return t["price"]
+        px = close_by[t["ticker"]].get(t["date"])
+        if px is None:
+            raise EngineError(f"{t['ticker']} has no close on {t['date']} to stand in for a null price")
+        return px
+
+    # --- reconstruct units, cash and money in ------------------------------
     provisional = any(bool(t.get("provisional")) for t in txns)
     first_buy = min(t["date"] for t in txns if t["type"] == "BUY")
-    buys, divs, flows = [], [], []  # flows: (date, +/- cash) for XIRR
-    running = 0
+    buys, sells, divs, flows = [], [], [], []  # flows: (date, +/- cash) for XIRR
+    units, basis, prov_tk = {}, {}, {}
+    cash = 0.0
+    cash_delta, new_by_date = {}, {}
     for t in txns:
-        d, ty, u = t["date"], t["type"], t["units"]
+        d, ty, u, tk = t["date"], t["type"], t["units"], t["ticker"]
         prov = bool(t.get("provisional"))
+        prov_tk[tk] = prov_tk.get(tk, False) or prov
         if ty == "BUY":
-            price = t["price"] if t["price"] is not None else close[d]
-            fees = t["fees"] if t["fees"] is not None else 0.0
+            price = trade_px(t)
+            fees = t["fees"] if t.get("fees") is not None else 0.0
             cost = u * price + fees
-            running += u
-            buys.append({"date": d, "units": u, "price": round(price, 4),
-                         "cost": round(cost, 2), "provisional": prov})
+            fc = t.get("from_cash", 0) or 0
+            fc = cash if fc == "all" else float(fc)
+            if fc < 0 or fc > cash + 0.005:
+                raise EngineError(f"BUY on {d} takes S${fc:.2f} from cash but only S${cash:.2f} is there")
+            if fc > cost + 0.005:
+                raise EngineError(f"BUY on {d} takes more from cash (S${fc:.2f}) than it costs (S${cost:.2f})")
+            new = cost - fc
+            cash -= fc
+            cash_delta[d] = cash_delta.get(d, 0.0) - fc
+            new_by_date[d] = new_by_date.get(d, 0.0) + new
+            units[tk] = units.get(tk, 0) + u
+            basis[tk] = basis.get(tk, 0.0) + cost
+            buys.append({"date": d, "ticker": tk, "units": u, "price": round(price, 4),
+                         "cost": round(cost, 2), "from_cash": round(fc, 2),
+                         "new_money": round(new, 2), "provisional": prov})
             flows.append((d, -cost))
         elif ty == "SELL":
-            price = t["price"] if t["price"] is not None else close[d]
-            fees = t["fees"] if t["fees"] is not None else 0.0
-            running -= u
-            if running < 0:
-                raise EngineError(f"units negative after SELL on {d}")
-            flows.append((d, u * price - fees))
+            price = trade_px(t)
+            fees = t["fees"] if t.get("fees") is not None else 0.0
+            held = units.get(tk, 0)
+            if u > held:
+                raise EngineError(f"SELL on {d} of {u} {tk} but only {held} held")
+            proceeds = u * price - fees
+            basis[tk] = basis.get(tk, 0.0) * (held - u) / held if held else 0.0  # average cost
+            units[tk] = held - u
+            cash += proceeds
+            cash_delta[d] = cash_delta.get(d, 0.0) + proceeds
+            sells.append({"date": d, "ticker": tk, "units": u, "price": round(price, 4),
+                          "proceeds": round(proceeds, 2), "provisional": prov})
+            flows.append((d, proceeds))
         elif ty == "DIV":
-            # DIV entitlement check: row units must equal units held before ex-date
-            held = _units_before(txns, d)
+            # DIV entitlement check: row units must equal units of THAT fund held before ex-date
+            held = _units_before(txns, d, tk)
             if u != held:
                 raise EngineError(
-                    f"DIV on {d} claims {u} units but {held} were held — fix the ledger")
+                    f"DIV on {d} claims {u} units of {tk} but {held} were held — fix the ledger")
             amount = t["amount"] if t.get("amount") is not None else u * t["dps"]
-            divs.append({"date": d, "amount": round(amount, 2), "provisional": prov})
+            cash += amount
+            cash_delta[d] = cash_delta.get(d, 0.0) + amount
+            divs.append({"date": d, "ticker": tk, "amount": round(amount, 2), "provisional": prov})
             flows.append((d, amount))
+    if cash < -0.005:
+        raise EngineError(f"cash account went negative: S${cash:.2f}")
 
     # --- daily series from first buy -------------------------------------
-    start_ix = date_ix[first_buy]
+    window = dates[date_ix[first_buy]:]
+    tickers = sorted(units)
+    unit_tl = {tk: _units_timeline(txns, window, tk) for tk in tickers}
+    px_tl, px_date_tl = {}, {}
+    for tk in tickers:  # each fund's close, carried forward over days it did not trade
+        fr, j, last, last_d = frame_rows[tk], 0, None, None
+        px_tl[tk], px_date_tl[tk] = [], []
+        while j < len(fr) and fr[j][0] < window[0]:
+            last, last_d = fr[j][4], fr[j][0]
+            j += 1
+        for d in window:
+            while j < len(fr) and fr[j][0] <= d:
+                last, last_d = fr[j][4], fr[j][0]
+                j += 1
+            px_tl[tk].append(last)
+            px_date_tl[tk].append(last_d)
     s_dates, s_value, s_outcome, s_invested = [], [], [], []
-    cum_div = 0.0
-    cum_invested = 0.0
-    div_by_date = {}
-    for x in divs:
-        div_by_date[x["date"]] = div_by_date.get(x["date"], 0.0) + x["amount"]
-    buy_cost_by_date = {}
-    for b in buys:
-        buy_cost_by_date[b["date"]] = buy_cost_by_date.get(b["date"], 0.0) + b["cost"]
-    units_series = _units_timeline(txns, dates[start_ix:])
-    for i, d in enumerate(dates[start_ix:]):
-        cum_div += div_by_date.get(d, 0.0)
-        cum_invested += buy_cost_by_date.get(d, 0.0)
-        v = units_series[i] * close[d]
+    cum_cash = cum_new = 0.0
+    for i, d in enumerate(window):
+        cum_cash += cash_delta.get(d, 0.0)
+        cum_new += new_by_date.get(d, 0.0)
+        v = 0.0
+        for tk in tickers:
+            if unit_tl[tk][i]:
+                if px_tl[tk][i] is None:
+                    raise EngineError(f"{tk} held on {d} but has no price yet")
+                v += unit_tl[tk][i] * px_tl[tk][i]
         s_dates.append(d)
         s_value.append(round(v, 2))
-        s_outcome.append(round(v + cum_div, 2))
-        s_invested.append(round(cum_invested, 2))
+        s_outcome.append(round(v + cum_cash, 2))
+        s_invested.append(round(cum_new, 2))
 
     as_of = dates[-1]
-    units_now = units_series[-1]
-    value_now = units_now * close[as_of]
-    invested = sum(b["cost"] for b in buys)  # SELLs not netted here; none exist yet
+    holdings = []
+    for tk in tickers:
+        n = unit_tl[tk][-1]
+        if not n:
+            continue
+        px = px_tl[tk][-1]
+        holdings.append({"ticker": tk, "units": n, "last_close": px,
+                         "last_price_date": px_date_tl[tk][-1],
+                         "value": round(n * px, 2), "cost": round(basis[tk], 2),
+                         "avg_cost": round(basis[tk] / n, 6), "provisional": prov_tk.get(tk, False)})
+    value_now = sum(h["units"] * h["last_close"] for h in holdings)
+    invested = sum(b["new_money"] for b in buys)
     div_total = sum(x["amount"] for x in divs)
-    market_gain = value_now - invested
-    outcome = value_now + div_total - invested
-    if abs((market_gain + div_total) - outcome) > 1e-6:
-        raise EngineError("decomposition identity failed")
-    if abs(value_now - units_now * close[as_of]) > 1e-9:
-        raise EngineError("valuation self-check failed")
+    outcome = value_now + cash - invested
+    market_gain = outcome - div_total
+    # self-checks: the cash account must reconcile from its parts, and series end == totals
+    recon = div_total + sum(x["proceeds"] for x in sells) - sum(b["from_cash"] for b in buys)
+    if abs(recon - cash) > 0.02:
+        raise EngineError(f"cash does not reconcile: {cash:.2f} vs {recon:.2f}")
+    if abs(s_outcome[-1] - (value_now + cash)) > 0.02 or abs(s_invested[-1] - invested) > 0.02:
+        raise EngineError("series end does not match totals")
 
-    # --- risk stats on the outcome series (value + cash dividends) -------
+    # --- risk stats on the outcome series (holdings + cash) ---------------
     risk = _risk_stats(s_dates, s_outcome)
-
-    # --- milestones -------------------------------------------------------
     milestones = _milestones(s_dates, s_outcome, s_invested, divs, risk)
 
-    flows.append((as_of, value_now))
+    flows.append((as_of, value_now))  # cash already left via DIV/SELL flows
     mwr = _xirr(flows)
 
+    held_now = {h["ticker"] for h in holdings}
     portfolio = {
         "as_of": as_of,
-        "ticker": prices["ticker"],
+        "ticker": main_tk,
         "provisional": provisional,
-        "position": {"units": units_now, "first_buy_date": first_buy,
-                     "last_close": close[as_of], "value": round(value_now, 2)},
+        "position": {"value": round(value_now, 2), "cash": round(cash, 2),
+                     "first_buy_date": first_buy, "holdings": holdings},
         "money": {"invested": round(invested, 2),
                   "dividends_received": round(div_total, 2),
+                  "cash": round(cash, 2),
                   "market_gain": round(market_gain, 2),
                   "total_outcome": round(outcome, 2),
                   "total_outcome_pct": round(outcome / invested, 6) if invested else None},
         "mwr_annualised": mwr,
         "series": {"dates": s_dates, "value": s_value,
                    "outcome": s_outcome, "invested": s_invested},
-        "events": {"buys": buys, "divs": divs},
+        "events": {"buys": buys, "sells": sells, "divs": divs},
         "risk": risk,
         "trend": _trend(rows),
         "projection": (_projection(value_now, as_of, fp, cagr=PROJECTION_ASSUMED_CAGR)
                        if (fp := _funnel_params(rows)) else None),
         "milestones": milestones,
-        "watch": [_watch(w, rows) for w in (watch or [])],
+        "watch": [_watch(w, rows) for w in (watch or []) if w.get("ticker") not in held_now],
     }
     education = _education(rows)
     return portfolio, education
@@ -200,12 +276,14 @@ def _watch(frame, hold_rows):
     return out
 
 
-def _units_before(txns, iso_date):
-    """Units held strictly before iso_date (ex-date entitlement)."""
+def _units_before(txns, iso_date, ticker=None):
+    """Units of one fund held strictly before iso_date (ex-date entitlement)."""
     running = 0
     for t in txns:
         if t["date"] >= iso_date:
             break
+        if ticker is not None and t.get("ticker") != ticker:
+            continue
         if t["type"] == "BUY":
             running += t["units"]
         elif t["type"] == "SELL":
@@ -213,16 +291,18 @@ def _units_before(txns, iso_date):
     return running
 
 
-def _units_timeline(txns, window_dates):
-    """Units held at each date in window_dates (inclusive of that date's buys)."""
+def _units_timeline(txns, window_dates, ticker=None):
+    """Units of one fund held at each date (inclusive of that date's trades)."""
     out, running, j = [], 0, 0
     txs = sorted(txns, key=lambda r: r["date"])
     for d in window_dates:
         while j < len(txs) and txs[j]["date"] <= d:
-            if txs[j]["type"] == "BUY":
-                running += txs[j]["units"]
-            elif txs[j]["type"] == "SELL":
-                running -= txs[j]["units"]
+            t = txs[j]
+            if ticker is None or t.get("ticker") == ticker:
+                if t["type"] == "BUY":
+                    running += t["units"]
+                elif t["type"] == "SELL":
+                    running -= t["units"]
             j += 1
         out.append(running)
     return out
